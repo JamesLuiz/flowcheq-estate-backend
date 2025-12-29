@@ -72,7 +72,7 @@ async def init_db():
 
 def generate_start_keyboard():
     keyboard = InlineKeyboardMarkup()
-    keyboard.add(InlineKeyboardButton('Open Tapshot', web_app=WebAppInfo(url="https://tapshot-front.vercel.app/")))
+    keyboard.add(InlineKeyboardButton('Open Tapshot', web_app=WebAppInfo(url="https://house-me.vercel.app/")))
     return keyboard
 
 async def handle_user_image(bot, user_id):
