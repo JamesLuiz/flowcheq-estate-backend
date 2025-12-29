@@ -7,7 +7,7 @@
   "rewrites": [
     {
       "source": "/api/telegram",
-      "dest": "/api/telegram.py"
+      "destination": "/api/telegram.py"
     }
   ]
 }
