@@ -2,17 +2,17 @@
     "version": 2,
     "builds": [
         {
-            "src": "api/telegram.py",
+            "src": "backend/bot/api/telegram.py",
             "use": "@vercel/python"
         }
     ],
     "routes": [
         {
             "src": "/api/telegram",
-            "dest": "/api/telegram.py"
+            "dest": "/backend/bot/api/telegram.py"
         }
     ],
     "env": {
-        "PYTHONPATH": "."
+        "PYTHONPATH": "./backend/bot"
     }
 }
