@@ -2,8 +2,8 @@
   
   "rewrites": [
     {
-      "src": "/api/telegram",
-      "dest": "/api/telegram.py"
+      "source": "/api/telegram",
+      "destination": "/api/telegram.py"
     }
   ]
 }
