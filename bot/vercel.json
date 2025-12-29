@@ -1,18 +1,18 @@
 {
-  "version": 2,
-  "builds": [{
-      "src": "/api/telegram",
-      "use": "@vercel/python"
-  }],
-  "routes": [
-      {
-          "src": "/api/telegram",
-          "dest": "/api/telegram.py"
-      }
-  ],
-
-  "env": {
-      "PYTHONPATH": "."
-  }
-  
+    "version": 2,
+    "builds": [
+        {
+            "src": "api/telegram.py",
+            "use": "@vercel/python"
+        }
+    ],
+    "routes": [
+        {
+            "src": "/api/telegram",
+            "dest": "/api/telegram.py"
+        }
+    ],
+    "env": {
+        "PYTHONPATH": "."
+    }
 }
