@@ -22,14 +22,14 @@ load_dotenv()
 # Bot initialization with error checking
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN not found in environment variables")
+    raise ValueError("BOT_TOKEN not found in environment variables. Please set it in Vercel environment variables.")
 
 bot = AsyncTeleBot(BOT_TOKEN)
 
 # MongoDB setup with connection handling
 MONGO_URI = os.getenv('MONGO_URI')
 if not MONGO_URI:
-    raise ValueError("MONGO_URI not found in environment variables")
+    raise ValueError("MONGO_URI not found in environment variables. Please set it in Vercel environment variables.")
 
 async def get_database():
     try:
@@ -47,7 +47,7 @@ db = None
 users_collection = None
 
 # API Configuration
-API_BASE_URL = os.getenv('API_URL', 'http://localhost:3000')
+API_BASE_URL = os.getenv('API_URL', os.getenv('VITE_API_URL', 'http://localhost:3000'))
 
 # Popular areas in Abuja for quick search
 POPULAR_ABUJA_AREAS = [
