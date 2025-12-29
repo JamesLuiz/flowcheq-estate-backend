@@ -1,8 +1,13 @@
 {
-  "rewrites": [
+  "version": 2,
+    "builds": [{
+        "src": "api/telegram.py",
+        "use": "@vercel/python"
+    }],
+  "routes": [
     {
-      "source": "/api/telegram",
-      "destination": "/api/telegram.py"
+      "src": "/api/telegram",
+      "dest": "api/telegram.py"
     }
   ]
 }
