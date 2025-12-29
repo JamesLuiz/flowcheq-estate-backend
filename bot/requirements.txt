@@ -1,8 +1,11 @@
-pyTelegramBotApi==4.12.0
-firebase-admin==6.2.0
+pyTelegramBotAPI==4.12.0
 python-dotenv==1.0.0
 requests==2.31.0
 aiohttp>=3.7.4
 motor==3.1.1
 pymongo==4.3.3
-requests==2.31.0
+pytz==2023.3
+
+# Note: The following are import paths from the packages above, not separate modules:
+# - telebot.handler_backends, telebot.async_telebot, telebot, telebot.types (from pyTelegramBotAPI)
+# - motor.motor_asyncio (from motor)
