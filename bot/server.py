@@ -47,11 +47,27 @@ logger.info("=" * 60)
 
 @app.on_event("startup")
 async def startup_event():
-    """Log startup information"""
+    """Log startup information and register bot commands"""
     logger.info("FastAPI application started")
     logger.info(f"Bot loaded: {telegram.bot_loaded}")
     if telegram.bot_error:
         logger.error(f"Bot error: {telegram.bot_error}")
+    else:
+        # Register bot commands with Telegram
+        try:
+            from telebot import types as tg_types
+            if telegram.bot_module and telegram.bot_module.bot:
+                commands = [
+                    tg_types.BotCommand("start", "Start the bot and see main menu"),
+                    tg_types.BotCommand("help", "Get help and information"),
+                    tg_types.BotCommand("terms", "View Terms of Service"),
+                    tg_types.BotCommand("agreement", "View User Agreement"),
+                    tg_types.BotCommand("contact", "Contact support team"),
+                ]
+                await telegram.bot_module.bot.set_my_commands(commands)
+                logger.info("✅ Bot commands registered successfully")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not register bot commands: {str(e)}")
 
 @app.get("/")
 async def root():

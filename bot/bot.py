@@ -52,6 +52,28 @@ if not MONGO_URI:
 logger.info("✅ MONGO_URI found and loaded")
 logger.info("=" * 60)
 
+# Register bot commands with Telegram
+async def register_bot_commands():
+    """Register bot commands with Telegram so they appear in the menu"""
+    try:
+        from telebot import types as tg_types
+        
+        commands = [
+            tg_types.BotCommand("start", "Start the bot and see main menu"),
+            tg_types.BotCommand("help", "Get help and information"),
+            tg_types.BotCommand("terms", "View Terms of Service"),
+            tg_types.BotCommand("agreement", "View User Agreement"),
+            tg_types.BotCommand("contact", "Contact support team"),
+        ]
+        
+        await bot.set_my_commands(commands)
+        logger.info("✅ Bot commands registered successfully")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not register bot commands: {str(e)}")
+        # Don't fail if commands can't be registered
+
+# Commands will be registered when server starts (in server.py) or on first update
+
 async def get_database():
     try:
         client = AsyncIOMotorClient(MONGO_URI)
@@ -306,7 +328,7 @@ async def start(message):
                 
                 await users_collection.insert_one(user_data)
         except Exception as e:
-            print(f"Database error: {str(e)}")
+            logger.error(f"Database error: {str(e)}")
             # Continue with welcome message even if DB fails
 
         # Professional welcome message for House Me
@@ -329,12 +351,17 @@ async def start(message):
         )
 
         keyboard = generate_start_keyboard()
+        logger.info(f"Sending welcome message to user {user_id} ({user_first_name})")
         await bot.reply_to(message, welcome_message, reply_markup=keyboard, parse_mode='Markdown')
+        logger.info(f"✅ Welcome message sent successfully to user {user_id}")
 
     except Exception as e:
         error_message = f"❌ An error occurred. Please try again or contact support."
-        await bot.reply_to(message, error_message)
-        print(f"Error in start handler: {str(e)}")
+        logger.exception(f"Error in start handler for user {message.from_user.id}:")
+        try:
+            await bot.reply_to(message, error_message)
+        except Exception as send_error:
+            logger.error(f"Failed to send error message: {str(send_error)}")
 
 @bot.callback_query_handler(func=lambda call: True)
 async def handle_callbacks(call):

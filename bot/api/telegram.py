@@ -60,7 +60,8 @@ logger.info("=" * 60)
 async def process_update(update_dict):
     """Process a Telegram webhook update"""
     try:
-        logger.info(f"Processing update: {update_dict.get('update_id', 'unknown')}")
+        update_id = update_dict.get('update_id', 'unknown')
+        logger.info(f"Processing update ID: {update_id}")
         
         if not bot_loaded or bot_module is None:
             logger.error("Bot module not loaded, cannot process update")
@@ -72,13 +73,39 @@ async def process_update(update_dict):
             await bot_module.init_db()
             logger.info("Database initialized successfully")
         
+        # Try to register commands on first update (in case they weren't registered at startup)
+        try:
+            from telebot import types as tg_types
+            commands = [
+                tg_types.BotCommand("start", "Start the bot and see main menu"),
+                tg_types.BotCommand("help", "Get help and information"),
+                tg_types.BotCommand("terms", "View Terms of Service"),
+                tg_types.BotCommand("agreement", "View User Agreement"),
+                tg_types.BotCommand("contact", "Contact support team"),
+            ]
+            await bot_module.bot.set_my_commands(commands)
+            logger.info("✅ Bot commands registered")
+        except Exception as cmd_error:
+            logger.warning(f"⚠️ Could not register commands: {str(cmd_error)}")
+            # Continue processing even if commands fail
+        
         # Create update object and process
         update = types.Update.de_json(update_dict)
+        logger.info(f"Update object created, type: {update.update_id}")
+        
+        # Check what type of update this is
+        if update.message:
+            logger.info(f"Message update: chat_id={update.message.chat.id}, text={update.message.text}")
+        elif update.callback_query:
+            logger.info(f"Callback query: data={update.callback_query.data}")
+        
         await bot_module.bot.process_new_updates([update])
-        logger.info("Update processed successfully")
+        logger.info(f"✅ Update {update_id} processed successfully")
         return True
     except Exception as e:
-        logger.exception("Error processing update:")
+        logger.exception("❌ Error processing update:")
+        import traceback
+        logger.error(traceback.format_exc())
         return False
 
 def handler(request):
