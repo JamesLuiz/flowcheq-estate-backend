@@ -7,7 +7,6 @@ import signal
 import sys
 import requests
 import aiohttp
-import datetime
 from datetime import datetime, timedelta 
 import pytz
 from telebot.async_telebot import AsyncTeleBot
@@ -119,12 +118,51 @@ async def init_db():
             await users_collection.create_index("_id")
             await users_collection.create_index("favorites")
             await users_collection.create_index("alerts")
+            await users_collection.create_index("subscription")
+            await users_collection.create_index("isSubscribed")
             logger.info("✅ Database indexes created/verified")
         except Exception as idx_error:
             logger.warning(f"Index creation warning (may already exist): {str(idx_error)}")
         return True
     except Exception as e:
         logger.exception("❌ Database initialization error:")
+        return False
+
+async def check_user_subscription(user_id):
+    """Check if user has an active subscription"""
+    try:
+        if users_collection is None:
+            await init_db()
+        
+        user = await users_collection.find_one({"_id": str(user_id)})
+        if not user:
+            return False
+        
+        # Check multiple possible subscription field names
+        # subscription could be: boolean, string (e.g., 'active', 'premium'), or object with status
+        subscription = user.get('subscription')
+        is_subscribed = user.get('isSubscribed', False)
+        subscribed = user.get('subscribed', False)
+        
+        # If subscription is a boolean
+        if isinstance(subscription, bool) and subscription:
+            return True
+        # If subscription is a string indicating active status
+        if isinstance(subscription, str) and subscription.lower() in ['active', 'premium', 'subscribed', 'true']:
+            return True
+        # If subscription is a dict/object with a status field
+        if isinstance(subscription, dict):
+            status = subscription.get('status', '').lower()
+            if status in ['active', 'premium', 'subscribed']:
+                return True
+        
+        # Check other boolean fields
+        if is_subscribed or subscribed:
+            return True
+        
+        return False
+    except Exception as e:
+        logger.error(f"Error checking subscription for user {user_id}: {str(e)}")
         return False
 
 async def fetch_properties(filters=None):
@@ -322,8 +360,8 @@ async def start(message):
                     "language_code": str(message.from_user.language_code or "en"),
                     "is_premium": message.from_user.is_premium or False,
                     "user_image": user_image,
-                    "created_at": datetime.datetime.utcnow(),
-                    "updated_at": datetime.datetime.utcnow(),
+                    "created_at": datetime.utcnow(),
+                    "updated_at": datetime.utcnow(),
                 }
                 
                 await users_collection.insert_one(user_data)
@@ -370,7 +408,7 @@ async def handle_callbacks(call):
         if call.data == 'user_agreement':
             agreement_text = (
                 "📋 **USER AGREEMENT**\n\n"
-                "**Last Updated:** " + datetime.datetime.now().strftime("%B %d, %Y") + "\n\n"
+                "**Last Updated:** " + datetime.now().strftime("%B %d, %Y") + "\n\n"
                 "By using House Me's services, you agree to the following terms:\n\n"
                 "**1. Account Registration**\n"
                 "• You must provide accurate and complete information\n"
@@ -409,7 +447,7 @@ async def handle_callbacks(call):
         elif call.data == 'terms_of_service':
             terms_text = (
                 "📜 **TERMS OF SERVICE**\n\n"
-                "**Last Updated:** " + datetime.datetime.now().strftime("%B %d, %Y") + "\n\n"
+                "**Last Updated:** " + datetime.now().strftime("%B %d, %Y") + "\n\n"
                 "**1. Acceptance of Terms**\n"
                 "By accessing and using House Me, you accept and agree to be bound by these Terms of Service.\n\n"
                 "**2. Platform Description**\n"
@@ -596,10 +634,19 @@ async def handle_callbacks(call):
                 favorites = user.get('favorites', []) if user else []
                 is_favorite = property_id in favorites
                 
+                # Check subscription status
+                is_subscribed = await check_user_subscription(user_id)
+                
                 # Format property details
                 text = f"🏠 **{property_data.get('title', 'Property Details')}**\n\n"
                 text += f"💰 **Price:** {format_price(property_data.get('price', 0))}\n"
-                text += f"📍 **Location:** {property_data.get('location', 'N/A')}\n"
+                
+                # Show street address only if subscribed
+                if is_subscribed:
+                    text += f"📍 **Location:** {property_data.get('location', 'N/A')}\n"
+                else:
+                    text += f"📍 **Area:** {property_data.get('location', 'N/A').split(',')[0] if property_data.get('location') else 'N/A'}\n"
+                
                 text += f"🏘️ **Type:** {property_data.get('type', 'N/A').capitalize()}\n"
                 if property_data.get('bedrooms'):
                     text += f"🛏️ **Bedrooms:** {property_data.get('bedrooms')}\n"
@@ -613,7 +660,18 @@ async def handle_callbacks(call):
                     text += f"\n👤 **Agent:** {agent.get('name', 'N/A')}"
                     if agent.get('verified'):
                         text += " ✅ Verified"
-                text += f"\n\n🔗 View on website: https://house-me.vercel.app/house/{property_id}"
+                
+                property_url = f"https://house-me.vercel.app/house/{property_id}"
+                
+                # Show subscription message if not subscribed
+                if not is_subscribed:
+                    text += f"\n\n🔒 **Subscribe to unlock:**\n"
+                    text += f"• Full street address\n"
+                    text += f"• Direct WhatsApp contact with agent\n"
+                    text += f"• Premium features\n\n"
+                    text += f"🔗 View full details: {property_url}"
+                else:
+                    text += f"\n\n🔗 View on website: {property_url}"
                 
                 keyboard = generate_property_keyboard(property_id, is_favorite)
                 await bot.edit_message_text(
@@ -631,48 +689,67 @@ async def handle_callbacks(call):
             user_id = str(call.from_user.id)
             
             try:
+                # Initialize database if needed
+                if users_collection is None:
+                    await init_db()
+                
                 user = await users_collection.find_one({"_id": user_id})
                 favorites = user.get('favorites', []) if user else []
                 
-                if property_id not in favorites:
+                # Check if property is already in favorites
+                if property_id in favorites:
+                    await bot.answer_callback_query(call.id, "⭐ This property is already in your favorites!", show_alert=False)
+                else:
+                    # Add to favorites
                     favorites.append(property_id)
                     await users_collection.update_one(
                         {"_id": user_id},
-                        {"$set": {"favorites": favorites, "updated_at": datetime.datetime.utcnow()}},
+                        {"$set": {"favorites": favorites, "updated_at": datetime.utcnow()}},
                         upsert=True
                     )
                     await bot.answer_callback_query(call.id, "✅ Added to favorites!")
-                else:
-                    await bot.answer_callback_query(call.id, "Already in favorites")
                 
-                # Refresh property view
+                # Refresh property view to show updated favorite status
                 property_data = await fetch_property(property_id)
                 if property_data:
-                    keyboard = generate_property_keyboard(property_id, True)
+                    # Check again for current status after update
+                    updated_user = await users_collection.find_one({"_id": user_id})
+                    updated_favorites = updated_user.get('favorites', []) if updated_user else []
+                    is_favorite = property_id in updated_favorites
+                    keyboard = generate_property_keyboard(property_id, is_favorite)
                     await bot.edit_message_reply_markup(
                         chat_id=call.message.chat.id,
                         message_id=call.message.message_id,
                         reply_markup=keyboard
                     )
             except Exception as e:
-                await bot.answer_callback_query(call.id, "Error adding to favorites", show_alert=True)
-                print(f"Error adding favorite: {str(e)}")
+                logger.exception(f"Error adding favorite: {str(e)}")
+                await bot.answer_callback_query(call.id, f"❌ Error: {str(e)[:50]}", show_alert=True)
         
         elif call.data.startswith('fav_remove_'):
             property_id = call.data.replace('fav_remove_', '')
             user_id = str(call.from_user.id)
             
             try:
-                favorites = (await users_collection.find_one({"_id": user_id})).get('favorites', [])
+                # Initialize database if needed
+                if users_collection is None:
+                    await init_db()
+                
+                user = await users_collection.find_one({"_id": user_id})
+                favorites = user.get('favorites', []) if user else []
+                
                 if property_id in favorites:
                     favorites.remove(property_id)
                     await users_collection.update_one(
                         {"_id": user_id},
-                        {"$set": {"favorites": favorites, "updated_at": datetime.datetime.utcnow()}}
+                        {"$set": {"favorites": favorites, "updated_at": datetime.utcnow()}},
+                        upsert=True
                     )
                     await bot.answer_callback_query(call.id, "❌ Removed from favorites")
+                else:
+                    await bot.answer_callback_query(call.id, "Property is not in your favorites", show_alert=False)
                 
-                # Refresh property view
+                # Refresh property view to show updated favorite status
                 property_data = await fetch_property(property_id)
                 if property_data:
                     keyboard = generate_property_keyboard(property_id, False)
@@ -682,8 +759,8 @@ async def handle_callbacks(call):
                         reply_markup=keyboard
                     )
             except Exception as e:
-                await bot.answer_callback_query(call.id, "Error removing favorite", show_alert=True)
-                print(f"Error removing favorite: {str(e)}")
+                logger.exception(f"Error removing favorite: {str(e)}")
+                await bot.answer_callback_query(call.id, f"❌ Error: {str(e)[:50]}", show_alert=True)
         
         elif call.data == 'my_favorites':
             user_id = str(call.from_user.id)
@@ -834,22 +911,51 @@ async def handle_callbacks(call):
             property_data = await fetch_property(property_id)
             if property_data and property_data.get('agent'):
                 agent = property_data.get('agent', {})
+                property_url = f"https://house-me.vercel.app/house/{property_id}"
+                
+                # Check subscription status
+                user_id = str(call.from_user.id)
+                is_subscribed = await check_user_subscription(user_id)
+                
                 contact_text = (
                     f"💬 **Contact Agent**\n\n"
                     f"👤 **Agent:** {agent.get('name', 'N/A')}\n"
                 )
-                if agent.get('phone'):
-                    contact_text += f"📱 **Phone:** {agent.get('phone')}\n"
-                if agent.get('email'):
-                    contact_text += f"📧 **Email:** {agent.get('email')}\n"
-                contact_text += f"\n🔗 **View Property:**\nhttps://house-me.vercel.app/house/{property_id}\n\n"
-                contact_text += "💬 **Need Help?**\nContact our support: +234 814 660 9734"
                 
-                keyboard = InlineKeyboardMarkup()
-                if agent.get('phone'):
-                    keyboard.add(InlineKeyboardButton('📱 Call Agent', url=f"tel:{agent.get('phone')}"))
-                    keyboard.add(InlineKeyboardButton('💬 WhatsApp', url=f"https://wa.me/{agent.get('phone').replace('+', '').replace(' ', '')}"))
-                keyboard.add(InlineKeyboardButton('🔙 Back to Property', callback_data=f'prop_{property_id}'))
+                # Show contact details only if subscribed
+                if is_subscribed:
+                    if agent.get('phone'):
+                        contact_text += f"📱 **Phone:** {agent.get('phone')}\n"
+                    if agent.get('email'):
+                        contact_text += f"📧 **Email:** {agent.get('email')}\n"
+                    
+                    # Show street address if subscribed
+                    if property_data.get('location'):
+                        contact_text += f"\n📍 **Address:** {property_data.get('location')}\n"
+                    
+                    contact_text += f"\n🔗 **View Property in App:**\n{property_url}\n\n"
+                    contact_text += "💬 **Need Help?**\nContact our support: +234 814 660 9734"
+                    
+                    keyboard = InlineKeyboardMarkup()
+                    keyboard.add(InlineKeyboardButton('🏠 Open in House Me App', web_app=WebAppInfo(url=property_url)))
+                    if agent.get('phone'):
+                        # Clean phone number for WhatsApp (remove +, spaces, etc.)
+                        phone_clean = agent.get('phone').replace('+', '').replace(' ', '').replace('-', '').replace('(', '').replace(')', '')
+                        keyboard.add(InlineKeyboardButton('💬 WhatsApp Agent', url=f"https://wa.me/{phone_clean}"))
+                    keyboard.add(InlineKeyboardButton('🔙 Back to Property', callback_data=f'prop_{property_id}'))
+                else:
+                    # Not subscribed - show subscription prompt and property URL
+                    contact_text += f"\n🔒 **Subscribe to unlock:**\n"
+                    contact_text += f"• Direct WhatsApp contact with agent\n"
+                    contact_text += f"• Agent phone number\n"
+                    contact_text += f"• Full street address\n"
+                    contact_text += f"• Premium features\n\n"
+                    contact_text += f"🔗 **View Property:**\n{property_url}\n\n"
+                    contact_text += "💬 **Need Help?**\nContact our support: +234 814 660 9734"
+                    
+                    keyboard = InlineKeyboardMarkup()
+                    keyboard.add(InlineKeyboardButton('🏠 Open Property Page', web_app=WebAppInfo(url=property_url)))
+                    keyboard.add(InlineKeyboardButton('🔙 Back to Property', callback_data=f'prop_{property_id}'))
                 
                 await bot.edit_message_text(
                     chat_id=call.message.chat.id,
@@ -858,6 +964,8 @@ async def handle_callbacks(call):
                     reply_markup=keyboard,
                     parse_mode='Markdown'
                 )
+            else:
+                await bot.answer_callback_query(call.id, "Property or agent information not found", show_alert=True)
         
         elif call.data == 'back_to_menu':
             user_first_name = call.from_user.first_name or "Valued User"
@@ -933,7 +1041,7 @@ async def terms_command(message):
     """Handle /terms command"""
     terms_text = (
         "📜 **TERMS OF SERVICE**\n\n"
-        "**Last Updated:** " + datetime.datetime.now().strftime("%B %d, %Y") + "\n\n"
+        "**Last Updated:** " + datetime.now().strftime("%B %d, %Y") + "\n\n"
         "**1. Acceptance of Terms**\n"
         "By accessing and using House Me, you accept and agree to be bound by these Terms of Service.\n\n"
         "**2. Platform Description**\n"
@@ -982,7 +1090,7 @@ async def agreement_command(message):
     """Handle /agreement command"""
     agreement_text = (
         "📋 **USER AGREEMENT**\n\n"
-        "**Last Updated:** " + datetime.datetime.now().strftime("%B %d, %Y") + "\n\n"
+        "**Last Updated:** " + datetime.now().strftime("%B %d, %Y") + "\n\n"
         "By using House Me's services, you agree to the following terms:\n\n"
         "**1. Account Registration**\n"
         "• You must provide accurate and complete information\n"
