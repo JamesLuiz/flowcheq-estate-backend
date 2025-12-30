@@ -5,6 +5,8 @@ aiohttp>=3.7.4
 motor==3.1.1
 pymongo==4.3.3
 pytz==2023.3
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
 
 # Note: The following are import paths from the packages above, not separate modules:
 # - telebot.handler_backends, telebot.async_telebot, telebot, telebot.types (from pyTelegramBotAPI)

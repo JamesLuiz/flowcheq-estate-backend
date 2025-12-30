@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: house-me-telegram-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: MONGO_URI
+        sync: false
+      - key: API_URL
+        sync: false
+      - key: PYTHONUNBUFFERED
+        value: 1
+

@@ -15,21 +15,42 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from dotenv import load_dotenv
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)],
+    force=True
+)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
 
+logger.info("=" * 60)
+logger.info("Initializing House Me Telegram Bot")
+logger.info("=" * 60)
+
 # Bot initialization with error checking
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN not found in environment variables. Please set it in Vercel environment variables.")
+    logger.error("❌ BOT_TOKEN not found in environment variables")
+    raise ValueError("BOT_TOKEN not found in environment variables. Please set it in environment variables.")
 
+logger.info("✅ BOT_TOKEN found and loaded")
 bot = AsyncTeleBot(BOT_TOKEN)
+logger.info("✅ AsyncTeleBot initialized")
 
 # MongoDB setup with connection handling
 MONGO_URI = os.getenv('MONGO_URI')
 if not MONGO_URI:
-    raise ValueError("MONGO_URI not found in environment variables. Please set it in Vercel environment variables.")
+    logger.error("❌ MONGO_URI not found in environment variables")
+    raise ValueError("MONGO_URI not found in environment variables. Please set it in environment variables.")
+
+logger.info("✅ MONGO_URI found and loaded")
+logger.info("=" * 60)
 
 async def get_database():
     try:
@@ -67,15 +88,21 @@ user_states = {}  # Stores user interaction states
 async def init_db():
     global db, users_collection
     try:
+        logger.info("Initializing database connection...")
         db = await get_database()
         users_collection = db.users
+        logger.info("✅ Database connection established")
         # Create indexes for better performance
-        await users_collection.create_index("_id")
-        await users_collection.create_index("favorites")
-        await users_collection.create_index("alerts")
+        try:
+            await users_collection.create_index("_id")
+            await users_collection.create_index("favorites")
+            await users_collection.create_index("alerts")
+            logger.info("✅ Database indexes created/verified")
+        except Exception as idx_error:
+            logger.warning(f"Index creation warning (may already exist): {str(idx_error)}")
         return True
     except Exception as e:
-        print(f"Database initialization error: {str(e)}")
+        logger.exception("❌ Database initialization error:")
         return False
 
 async def fetch_properties(filters=None):

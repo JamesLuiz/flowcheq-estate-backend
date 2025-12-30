@@ -1,64 +1,103 @@
 """
-Vercel serverless function handler for Telegram bot webhook
-This file is the entry point for Vercel serverless functions
+Telegram bot webhook handler for Render/FastAPI
+This file handles webhook requests from Telegram
 All bot logic lives in bot.py in the parent directory
 """
 import json
 import sys
 import os
 import asyncio
+import logging
+
+# Ensure stdout/stderr aren't buffered (important for Render/cloud platforms)
+os.environ.setdefault('PYTHONUNBUFFERED', '1')
+
+# Configure logging to stdout with timestamps
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)],
+    force=True  # Force reconfiguration
+)
+logger = logging.getLogger(__name__)
+
+# Print startup message
+logger.info("=" * 60)
+logger.info("Starting Telegram Bot Webhook Handler")
+logger.info("=" * 60)
 
 # Add parent directory to path to import bot module
 current_dir = os.path.dirname(os.path.abspath(__file__))
 bot_dir = os.path.dirname(current_dir)
 sys.path.insert(0, bot_dir)
 
+logger.info(f"Current directory: {current_dir}")
+logger.info(f"Bot directory: {bot_dir}")
+logger.info(f"Python path: {sys.path}")
+
 # Import bot module - this will initialize the bot
+bot_module = None
+bot_error = None
 try:
+    logger.info("Attempting to import bot module...")
     import bot
     from telebot import types
+    bot_module = bot
     bot_loaded = True
     bot_error = None
+    logger.info("✅ Bot module imported successfully!")
+    logger.info(f"BOT_TOKEN configured: {bool(bot.BOT_TOKEN)}")
+    logger.info(f"MONGO_URI configured: {bool(bot.MONGO_URI)}")
+    logger.info(f"API_BASE_URL configured: {bool(bot.API_BASE_URL)}")
 except (ImportError, ValueError) as e:
-    print(f"Error loading bot module: {e}")
-    import traceback
-    traceback.print_exc()
+    logger.exception("❌ Error loading bot module:")
     bot_loaded = False
     bot_error = str(e)
-    bot = None
+    bot_module = None
+
+logger.info("=" * 60)
 
 async def process_update(update_dict):
     """Process a Telegram webhook update"""
     try:
-        if not bot_loaded or bot is None:
-            print("Bot module not loaded")
+        logger.info(f"Processing update: {update_dict.get('update_id', 'unknown')}")
+        
+        if not bot_loaded or bot_module is None:
+            logger.error("Bot module not loaded, cannot process update")
             return False
         
         # Initialize database if needed
-        if bot.users_collection is None:
-            await bot.init_db()
+        if bot_module.users_collection is None:
+            logger.info("Initializing database connection...")
+            await bot_module.init_db()
+            logger.info("Database initialized successfully")
         
         # Create update object and process
         update = types.Update.de_json(update_dict)
-        await bot.bot.process_new_updates([update])
+        await bot_module.bot.process_new_updates([update])
+        logger.info("Update processed successfully")
         return True
     except Exception as e:
-        print(f"Error processing update: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.exception("Error processing update:")
         return False
 
 def handler(request):
     """
-    Vercel serverless function handler
+    Handler function for webhook requests
+    Works with both Vercel serverless and FastAPI/Flask
+    
     request format: {method, path, headers, body}
+    Returns: dict with statusCode, headers, body for Vercel
+             OR Response object for FastAPI
     """
     try:
         method = request.get('method', 'GET').upper()
+        logger.info(f"Received {method} request")
         
         # GET request - status page
         if method == 'GET':
-            if not bot_loaded or bot is None:
+            logger.info("Handling GET request - status page")
+            if not bot_loaded or bot_module is None:
                 html = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -76,7 +115,7 @@ def handler(request):
         <div class="error">
             <h2>❌ Configuration Error</h2>
             <p>{bot_error if bot_error else 'Bot module not loaded'}</p>
-            <p>Please check your environment variables in Vercel dashboard.</p>
+            <p>Please check your environment variables.</p>
             <p>Required: BOT_TOKEN, MONGO_URI, API_URL</p>
         </div>
     </div>
@@ -101,9 +140,9 @@ def handler(request):
         <h1>🏠 House Me Telegram Bot</h1>
         <p><strong>Status:</strong> ✅ Running and ready to receive webhooks!</p>
         <div class="status">
-            <p>BOT_TOKEN: <span class="{'ok' if bot.BOT_TOKEN else 'error'}">{'✅ Configured' if bot.BOT_TOKEN else '❌ Not configured'}</span></p>
-            <p>MONGO_URI: <span class="{'ok' if bot.MONGO_URI else 'error'}">{'✅ Configured' if bot.MONGO_URI else '❌ Not configured'}</span></p>
-            <p>API_URL: <span class="{'ok' if bot.API_BASE_URL else 'error'}">{'✅ Configured' if bot.API_BASE_URL else '❌ Not configured'}</span></p>
+            <p>BOT_TOKEN: <span class="{'ok' if bot_module.BOT_TOKEN else 'error'}">{'✅ Configured' if bot_module.BOT_TOKEN else '❌ Not configured'}</span></p>
+            <p>MONGO_URI: <span class="{'ok' if bot_module.MONGO_URI else 'error'}">{'✅ Configured' if bot_module.MONGO_URI else '❌ Not configured'}</span></p>
+            <p>API_URL: <span class="{'ok' if bot_module.API_BASE_URL else 'error'}">{'✅ Configured' if bot_module.API_BASE_URL else '❌ Not configured'}</span></p>
         </div>
     </div>
 </body>
@@ -117,7 +156,10 @@ def handler(request):
         
         # POST request - webhook from Telegram
         if method == 'POST':
-            if not bot_loaded or bot is None:
+            logger.info("Handling POST request - Telegram webhook")
+            
+            if not bot_loaded or bot_module is None:
+                logger.error("Bot not initialized, cannot process webhook")
                 return {
                     'statusCode': 500,
                     'headers': {'Content-Type': 'text/plain'},
@@ -125,12 +167,15 @@ def handler(request):
                 }
             
             body = request.get('body', '{}')
+            logger.info(f"Request body type: {type(body)}, length: {len(str(body))}")
             
             # Parse JSON body
             if isinstance(body, str):
                 try:
                     update_dict = json.loads(body)
+                    logger.info(f"Parsed JSON successfully, update_id: {update_dict.get('update_id')}")
                 except json.JSONDecodeError as e:
+                    logger.error(f"Invalid JSON: {str(e)}")
                     return {
                         'statusCode': 400,
                         'headers': {'Content-Type': 'text/plain'},
@@ -140,7 +185,13 @@ def handler(request):
                 update_dict = body
             
             # Process update asynchronously
+            logger.info("Processing update asynchronously...")
             success = asyncio.run(process_update(update_dict))
+            
+            if success:
+                logger.info("✅ Update processed successfully")
+            else:
+                logger.error("❌ Failed to process update")
             
             return {
                 'statusCode': 200 if success else 500,
@@ -149,6 +200,7 @@ def handler(request):
             }
         
         # Method not allowed
+        logger.warning(f"Method not allowed: {method}")
         return {
             'statusCode': 405,
             'headers': {'Content-Type': 'text/plain'},
@@ -158,11 +210,9 @@ def handler(request):
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
-        print(f"Handler error: {str(e)}")
-        print(error_trace)
+        logger.exception("Handler error:")
         return {
             'statusCode': 500,
             'headers': {'Content-Type': 'text/plain'},
-            'body': f'Error: {str(e)}'
+            'body': f'Error: {str(e)}\n\n{error_trace}'
         }
-
