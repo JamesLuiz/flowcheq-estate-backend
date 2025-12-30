@@ -83,7 +83,7 @@ async def root():
 async def status():
     """Status page for bot"""
     logger.info("GET /api/telegram - Status page")
-    result = telegram.handler({'method': 'GET'})
+    result = await telegram.handler_async({'method': 'GET'})
     
     # Convert Vercel-style response to FastAPI response
     return HTMLResponse(
@@ -121,8 +121,8 @@ async def webhook(request: Request):
             'headers': dict(request.headers)
         }
         
-        # Process through handler
-        result = telegram.handler(req)
+        # Process through async handler (FastAPI context)
+        result = await telegram.handler_async(req)
         
         # Convert Vercel-style response to FastAPI response
         status_code = result.get('statusCode', 200)

@@ -74,20 +74,23 @@ async def process_update(update_dict):
             logger.info("Database initialized successfully")
         
         # Try to register commands on first update (in case they weren't registered at startup)
-        try:
-            from telebot import types as tg_types
-            commands = [
-                tg_types.BotCommand("start", "Start the bot and see main menu"),
-                tg_types.BotCommand("help", "Get help and information"),
-                tg_types.BotCommand("terms", "View Terms of Service"),
-                tg_types.BotCommand("agreement", "View User Agreement"),
-                tg_types.BotCommand("contact", "Contact support team"),
-            ]
-            await bot_module.bot.set_my_commands(commands)
-            logger.info("✅ Bot commands registered")
-        except Exception as cmd_error:
-            logger.warning(f"⚠️ Could not register commands: {str(cmd_error)}")
-            # Continue processing even if commands fail
+        # Only register once (use a flag to avoid repeated calls)
+        if not hasattr(process_update, '_commands_registered'):
+            try:
+                from telebot import types as tg_types
+                commands = [
+                    tg_types.BotCommand("start", "Start the bot and see main menu"),
+                    tg_types.BotCommand("help", "Get help and information"),
+                    tg_types.BotCommand("terms", "View Terms of Service"),
+                    tg_types.BotCommand("agreement", "View User Agreement"),
+                    tg_types.BotCommand("contact", "Contact support team"),
+                ]
+                await bot_module.bot.set_my_commands(commands)
+                logger.info("✅ Bot commands registered")
+                process_update._commands_registered = True
+            except Exception as cmd_error:
+                logger.warning(f"⚠️ Could not register commands: {str(cmd_error)}")
+                # Continue processing even if commands fail
         
         # Create update object and process
         update = types.Update.de_json(update_dict)
@@ -108,14 +111,12 @@ async def process_update(update_dict):
         logger.error(traceback.format_exc())
         return False
 
-def handler(request):
+async def handler_async(request):
     """
-    Handler function for webhook requests
-    Works with both Vercel serverless and FastAPI/Flask
+    Async handler function for webhook requests (used by FastAPI)
     
     request format: {method, path, headers, body}
-    Returns: dict with statusCode, headers, body for Vercel
-             OR Response object for FastAPI
+    Returns: dict with statusCode, headers, body
     """
     try:
         method = request.get('method', 'GET').upper()
@@ -211,9 +212,9 @@ def handler(request):
             else:
                 update_dict = body
             
-            # Process update asynchronously
+            # Process update asynchronously (use await, not asyncio.run)
             logger.info("Processing update asynchronously...")
-            success = asyncio.run(process_update(update_dict))
+            success = await process_update(update_dict)
             
             if success:
                 logger.info("✅ Update processed successfully")
@@ -243,3 +244,31 @@ def handler(request):
             'headers': {'Content-Type': 'text/plain'},
             'body': f'Error: {str(e)}\n\n{error_trace}'
         }
+
+def handler(request):
+    """
+    Synchronous handler function for webhook requests (for backwards compatibility)
+    Works with Vercel serverless or other sync contexts
+    
+    This is a wrapper around handler_async() that uses asyncio.run()
+    For async contexts (like FastAPI), use handler_async() directly.
+    
+    request format: {method, path, headers, body}
+    Returns: dict with statusCode, headers, body
+    """
+    # Check if we're in an async context
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # If we're in a running event loop, we can't use asyncio.run()
+            # This shouldn't happen if this function is called correctly
+            raise RuntimeError(
+                "Cannot call sync handler() from async context. "
+                "Use handler_async() instead, or ensure handler() is called from a sync context."
+            )
+    except RuntimeError:
+        # No event loop exists, safe to use asyncio.run
+        pass
+    
+    # Call the async handler using asyncio.run
+    return asyncio.run(handler_async(request))
