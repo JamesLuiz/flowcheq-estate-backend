@@ -32,6 +32,11 @@ export class HousesService {
       throw new ForbiddenException('Only agents and landlords can create listings');
     }
 
+    // Check if user is verified
+    if (!agent.verified || agent.verificationStatus !== 'approved') {
+      throw new ForbiddenException('You must be verified to upload properties. Please complete verification first.');
+    }
+
     const house = new this.houseModel({
       ...dto,
       agentId: new Types.ObjectId(agentId),

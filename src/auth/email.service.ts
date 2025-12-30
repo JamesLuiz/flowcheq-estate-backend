@@ -182,5 +182,83 @@ export class EmailService {
     // This way the user still gets a response (security best practice)
     return { success: false, resetUrl, error: lastError.message };
   }
+
+  async sendVerificationEmail(
+    email: string,
+    name: string,
+    status: 'approved' | 'rejected',
+    message: string,
+    rejectionReason?: string,
+  ) {
+    const subject = status === 'approved' 
+      ? 'Verification Approved - House Me' 
+      : 'Verification Rejected - House Me';
+
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const emailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .status-approved { color: #10b981; font-weight: bold; }
+            .status-rejected { color: #ef4444; font-weight: bold; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Verification ${status === 'approved' ? 'Approved' : 'Rejected'}</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${name},</p>
+              <p>Your verification request has been <span class="status-${status}">${status === 'approved' ? 'APPROVED' : 'REJECTED'}</span>.</p>
+              ${rejectionReason ? `<p><strong>Reason:</strong> ${rejectionReason}</p>` : ''}
+              <p><strong>Message:</strong> ${message}</p>
+              ${status === 'approved' 
+                ? '<p>You can now upload properties on House Me. Thank you for your patience!</p>'
+                : '<p>Please submit a new verification request with valid documents that meet our requirements.</p>'}
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (!this.transporter) {
+      this.logger.warn(
+        `Email sending is disabled. Would send verification email to: ${email}`,
+      );
+      return { success: false };
+    }
+
+    const mailOptions = {
+      from: `"House Me" <${fromEmail}>`,
+      to: email,
+      subject: subject,
+      html: emailBody,
+    };
+
+    try {
+      const info = await this.transporter.sendMail(mailOptions);
+      this.logger.log(`Verification email sent to: ${email} (MessageId: ${info.messageId})`);
+      return { success: true, messageId: info.messageId };
+    } catch (error: any) {
+      this.logger.error(`Failed to send verification email to ${email}:`, error);
+      return { success: false, error: error.message };
+    }
+  }
 }
 

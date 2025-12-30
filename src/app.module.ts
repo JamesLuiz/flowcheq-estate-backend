@@ -9,6 +9,8 @@ import { HousesModule } from './houses/houses.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { AdminModule } from './admin/admin.module';
+import { VerificationsModule } from './verifications/verifications.module';
+import { PromotionsModule } from './promotions/promotions.module';
 
 @Module({
   imports: [
@@ -29,6 +31,8 @@ import { AdminModule } from './admin/admin.module';
     AlertsModule,
     ReviewsModule,
     AdminModule,
+    VerificationsModule,
+    PromotionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

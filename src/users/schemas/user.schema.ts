@@ -57,9 +57,6 @@ export class User {
 
   @Prop()
   verificationDate?: Date;
-
-  @Prop()
-  personaInquiryId?: string;
 }
 
 export type UserDocument = HydratedDocument<User>;
