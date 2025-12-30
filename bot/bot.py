@@ -331,12 +331,16 @@ async def handle_user_image(bot, user_id):
 
 @bot.message_handler(commands=['start'])
 async def start(message): 
-    """Handle /start command with professional welcome message"""
+    """Handle /start command with professional welcome message and deep link support"""
     try:
         user_id = str(message.from_user.id)
         user_first_name = message.from_user.first_name or "Valued User"
         user_last_name = message.from_user.last_name or ""
         user_full_name = f"{user_first_name} {user_last_name}".strip()
+        
+        # Handle deep link parameters (e.g., /start house_me)
+        command_args = message.text.split() if message.text else []
+        deep_link_param = command_args[1] if len(command_args) > 1 else None
         
         # Initialize database
         if users_collection is None:
@@ -364,7 +368,27 @@ async def start(message):
                     "updated_at": datetime.utcnow(),
                 }
                 
+                # Store deep link parameter if provided
+                if deep_link_param:
+                    user_data['deep_link'] = deep_link_param
+                    user_data['deep_link_date'] = datetime.utcnow()
+                
                 await users_collection.insert_one(user_data)
+                logger.info(f"New user created: {user_id} with deep_link: {deep_link_param}")
+            else:
+                # Update deep link if provided for existing user
+                if deep_link_param:
+                    await users_collection.update_one(
+                        {"_id": user_id},
+                        {
+                            "$set": {
+                                "deep_link": deep_link_param,
+                                "deep_link_date": datetime.utcnow(),
+                                "updated_at": datetime.utcnow()
+                            }
+                        }
+                    )
+                    logger.info(f"Updated deep link for user {user_id}: {deep_link_param}")
         except Exception as e:
             logger.error(f"Database error: {str(e)}")
             # Continue with welcome message even if DB fails
@@ -389,7 +413,7 @@ async def start(message):
         )
 
         keyboard = generate_start_keyboard()
-        logger.info(f"Sending welcome message to user {user_id} ({user_first_name})")
+        logger.info(f"Sending welcome message to user {user_id} ({user_first_name}) via {'deep link' if deep_link_param else 'start command'}")
         await bot.reply_to(message, welcome_message, reply_markup=keyboard, parse_mode='Markdown')
         logger.info(f"✅ Welcome message sent successfully to user {user_id}")
 
