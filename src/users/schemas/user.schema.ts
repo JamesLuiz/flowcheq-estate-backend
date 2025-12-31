@@ -20,7 +20,6 @@ export class User {
     unique: true,
     lowercase: true,
     trim: true,
-    index: true,
   })
   email: string;
 

@@ -21,7 +21,6 @@ export class Verification {
     type: MongooseSchema.Types.ObjectId,
     ref: User.name,
     required: true,
-    index: true,
   })
   userId: Types.ObjectId;
 
@@ -72,6 +71,11 @@ export class Verification {
 
   @Prop({ trim: true })
   documentName?: string; // Name extracted from document (for comparison)
+
+  // Timestamps added by Mongoose when `timestamps: true` is set on the schema.
+  // Declared here so TypeScript recognizes them on document instances.
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export type VerificationDocument = HydratedDocument<Verification>;

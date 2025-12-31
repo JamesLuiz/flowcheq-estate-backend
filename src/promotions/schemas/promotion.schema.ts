@@ -64,6 +64,11 @@ export class Promotion {
 
   @Prop({ type: Date })
   expiredAt?: Date;
+
+  // Timestamps added by Mongoose when `timestamps: true` is set on the schema.
+  // Declared here so TypeScript recognizes them on document instances.
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export type PromotionDocument = HydratedDocument<Promotion>;
