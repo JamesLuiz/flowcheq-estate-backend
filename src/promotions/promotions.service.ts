@@ -198,6 +198,33 @@ export class PromotionsService {
     return this.toPromotionResponse(promotion);
   }
 
+  async adminCancel(id: string) {
+    const promotion = await this.promotionModel.findById(id);
+    if (!promotion) {
+      throw new NotFoundException('Promotion not found');
+    }
+
+    promotion.status = PromotionStatus.CANCELLED;
+    await promotion.save();
+
+    // Unfeature the house
+    const activePromo = await this.promotionModel.findOne({
+      houseId: promotion.houseId,
+      status: PromotionStatus.ACTIVE,
+      _id: { $ne: promotion._id },
+    });
+
+    if (!activePromo) {
+      await this.housesService.update(
+        promotion.houseId.toString(), 
+        promotion.userId.toString(), 
+        { featured: false }
+      );
+    }
+
+    return this.toPromotionResponse(promotion);
+  }
+
   private toPromotionResponse(promotion: PromotionDocument) {
     const house = promotion.houseId as any;
     const user = promotion.userId as any;
