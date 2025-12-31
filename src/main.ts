@@ -7,7 +7,7 @@ async function bootstrap() {
 
   // Enhanced CORS configuration
   app.enableCors({
-    origin: ['https://house-me.vercel.app', 'http://localhost:3000'],
+    origin: ['https://house-me.vercel.app', 'http://localhost:8080'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',
