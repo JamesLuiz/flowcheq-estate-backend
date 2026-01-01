@@ -17,9 +17,12 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "seed:admin": "ts-node ./scripts/seed-admin.ts"
   },
   "dependencies": {
+    "@nestjs/swagger": "^6.2.0",
+    "swagger-ui-express": "^4.6.3",
     "@emailjs/browser": "^4.4.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",

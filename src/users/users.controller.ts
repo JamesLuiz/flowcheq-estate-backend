@@ -16,6 +16,7 @@ import {
   FileTypeValidator,
   forwardRef,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UsersService } from './users.service';
 import { HousesService } from '../houses/houses.service';
@@ -27,6 +28,7 @@ import { UserRole } from './schemas/user.schema';
 import { CloudinaryService } from '../houses/cloudinary.service';
 
 @Controller('agents')
+@ApiTags('Agents')
 export class UsersController {
   constructor(
     private readonly usersService: UsersService,
@@ -36,6 +38,25 @@ export class UsersController {
   ) {}
 
   @Get()
+  @ApiOperation({ summary: 'List agents' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of agent profiles',
+    schema: {
+      example: {
+        data: [
+          {
+            _id: '64a1f2e9c...',
+            name: 'Eliezer James',
+            email: 'jameseliezer116@gmail.com',
+            role: 'agent',
+            verified: true,
+            avatarUrl: 'https://example.com/avatar.jpg'
+          }
+        ]
+      }
+    }
+  })
   async listAgents(
     @Query('limit') limit = '20',
     @Query('verified') verified?: string,
@@ -55,6 +76,30 @@ export class UsersController {
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Get agent profile and listings' })
+  @ApiResponse({
+    status: 200,
+    description: 'Agent profile with listings',
+    schema: {
+      example: {
+        agent: {
+          _id: '64a1f2e9c...',
+          name: 'Eliezer James',
+          email: 'jameseliezer116@gmail.com',
+          role: 'agent',
+          verified: true,
+        },
+        listings: [
+          {
+            _id: '640c1b2a9c...',
+            title: '3 bedroom flat in Lekki',
+            price: 15000000,
+            location: 'Lekki, Lagos'
+          }
+        ]
+      }
+    }
+  })
   async getAgentProfile(@Param('id') id: string) {
     const agent = await this.usersService.findById(id);
     if (!agent || (agent.role !== UserRole.Agent && agent.role !== UserRole.Landlord)) {
@@ -71,6 +116,9 @@ export class UsersController {
 
   @Patch('me')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Update authenticated agent profile' })
+  @ApiResponse({ status: 200, description: 'Updated agent profile' })
   updateProfile(
     @CurrentUser() user: RequestUser,
     @Body() dto: UpdateAgentProfileDto,
@@ -81,6 +129,9 @@ export class UsersController {
   @Post('me/avatar')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('avatar'))
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Upload avatar for authenticated user' })
+  @ApiResponse({ status: 200, description: 'Updated profile with avatarUrl' })
   async uploadAvatar(
     @CurrentUser() user: RequestUser,
     @UploadedFile(

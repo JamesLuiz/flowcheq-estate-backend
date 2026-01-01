@@ -14,6 +14,7 @@ import {
   MaxFileSizeValidator,
   FileTypeValidator,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { PromotionsService } from './promotions.service';
 import { FlutterwaveService } from './flutterwave.service';
@@ -24,6 +25,7 @@ import { type RequestUser } from '../auth/decorators/current-user.decorator';
 import { CloudinaryService } from '../houses/cloudinary.service';
 
 @Controller('promotions')
+@ApiTags('Promotions')
 export class PromotionsController {
   constructor(
     private readonly promotionsService: PromotionsService,
@@ -32,12 +34,17 @@ export class PromotionsController {
   ) {}
 
   @Get('active')
+  @ApiOperation({ summary: 'Get currently active promotions' })
+  @ApiResponse({ status: 200, description: 'Active promotions list' })
   async getActivePromotions() {
     return this.promotionsService.findActivePromotions();
   }
 
   @Get()
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Get promotions for authenticated user' })
+  @ApiResponse({ status: 200, description: 'List of promotions for user' })
   async getAllPromotions(
     @CurrentUser() user: RequestUser,
     @Query('status') status?: string,
@@ -49,12 +56,17 @@ export class PromotionsController {
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Get promotion by id' })
+  @ApiResponse({ status: 200, description: 'Promotion details' })
   async getPromotion(@Param('id') id: string) {
     return this.promotionsService.findOne(id);
   }
 
   @Post('initialize-payment')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Initialize payment for promotion' })
+  @ApiResponse({ status: 200, description: 'Payment initialization payload' })
   async initializePayment(
     @CurrentUser() user: RequestUser,
     @Body() body: { houseId: string; days: number; email: string; name: string; phone?: string },
@@ -82,6 +94,9 @@ export class PromotionsController {
 
   @Post('verify-payment')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Verify payment and create promotion' })
+  @ApiResponse({ status: 200, description: 'Promotion created after verification' })
   async verifyPayment(
     @CurrentUser() user: RequestUser,
     @Body() body: { transactionId: string; houseId: string; days: number; startDate: string; bannerImage: string },
@@ -113,6 +128,9 @@ export class PromotionsController {
   @Post()
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('bannerImage'))
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Create a promotion with uploaded banner' })
+  @ApiResponse({ status: 201, description: 'Promotion created' })
   async createPromotion(
     @CurrentUser() user: RequestUser,
     @Body() body: any,
@@ -147,11 +165,16 @@ export class PromotionsController {
 
   @Patch(':id/activate')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Activate a promotion' })
+  @ApiResponse({ status: 200, description: 'Promotion activated' })
   async activatePromotion(@Param('id') id: string) {
     return this.promotionsService.activate(id);
   }
 
   @Post(':id/click')
+  @ApiOperation({ summary: 'Track click on promotion' })
+  @ApiResponse({ status: 200, description: 'Click tracked' })
   async trackClick(@Param('id') id: string) {
     await this.promotionsService.trackClick(id);
     return { success: true };
@@ -159,6 +182,9 @@ export class PromotionsController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Cancel a promotion' })
+  @ApiResponse({ status: 200, description: 'Promotion cancelled' })
   async cancelPromotion(
     @CurrentUser() user: RequestUser,
     @Param('id') id: string,
