@@ -237,7 +237,7 @@ def generate_start_keyboard():
         InlineKeyboardButton('📍 Popular Areas', callback_data='popular_areas'),
         InlineKeyboardButton('🔔 Property Alerts', callback_data='property_alerts')
     )
-    keyboard.add(InlineKeyboardButton('💬 Contact Support', url='https://wa.me/2348146609734'))
+    keyboard.add(InlineKeyboardButton('💬 Contact Support', url='https://wa.me/2349152087229'))
     keyboard.add(
         InlineKeyboardButton('📋 Agreement', callback_data='user_agreement'),
         InlineKeyboardButton('📜 Terms', callback_data='terms_of_service'),
@@ -975,7 +975,7 @@ async def handle_callbacks(call):
                     contact_text += f"• Full street address\n"
                     contact_text += f"• Premium features\n\n"
                     contact_text += f"🔗 **View Property:**\n{property_url}\n\n"
-                    contact_text += "💬 **Need Help?**\nContact our support: +234 814 660 9734"
+                    contact_text += "💬 **Need Help?**\nContact our support: +2349152087229"
                     
                     keyboard = InlineKeyboardMarkup()
                     keyboard.add(InlineKeyboardButton('🏠 Open Property Page', web_app=WebAppInfo(url=property_url)))
@@ -1151,7 +1151,7 @@ async def contact_command(message):
         "💬 **CONTACT HOUSE ME SUPPORT**\n\n"
         "We're here to help you with any questions or concerns!\n\n"
         "**📱 WhatsApp Support:**\n"
-        "Click here to chat: https://wa.me/2348146609734\n"
+        "Click here to chat: https://wa.me/2349152087229\n"
         "Or send a message to: +234 814 660 9734\n\n"
         "**📧 Email Support:**\n"
         "abujashoemall@gmail.com\n\n"
@@ -1168,7 +1168,7 @@ async def contact_command(message):
         "For urgent matters, please use WhatsApp for faster response."
     )
     keyboard = InlineKeyboardMarkup()
-    keyboard.add(InlineKeyboardButton('💬 Chat on WhatsApp', url='https://wa.me/2348146609734'))
+    keyboard.add(InlineKeyboardButton('💬 Chat on WhatsApp', url='https://wa.me/2349152087229'))
     keyboard.add(InlineKeyboardButton('🔙 Back to Main Menu', callback_data='back_to_menu'))
     await bot.reply_to(message, contact_text, reply_markup=keyboard, parse_mode='Markdown')
 
