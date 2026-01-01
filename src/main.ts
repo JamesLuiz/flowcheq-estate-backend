@@ -31,19 +31,37 @@ async function bootstrap() {
   );
 
   // Swagger / OpenAPI setup
-  const swaggerConfig = new DocumentBuilder()
+  const config = new DocumentBuilder()
     .setTitle('House-me API')
-    .setDescription('API documentation for the House-me backend')
+    .setDescription('API documentation for the House-me estate management backend')
     .setVersion('1.0')
-    .addBearerAuth({
-      type: 'http',
-      scheme: 'bearer',
-      bearerFormat: 'JWT',
-    }, 'access-token')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'Enter JWT token',
+      },
+      'access-token',
+    )
+    .addTag('Health', 'Health check endpoints')
+    .addTag('Auth', 'Authentication endpoints')
+    .addTag('Houses', 'Property listing endpoints')
+    .addTag('Agents', 'Agent profile endpoints')
+    .addTag('Admin', 'Admin management endpoints')
+    .addTag('Alerts', 'Property alert endpoints')
+    .addTag('Reviews', 'Agent review endpoints')
+    .addTag('Verifications', 'Agent verification endpoints')
+    .addTag('Promotions', 'Property promotion endpoints')
+    .addTag('Viewings', 'Property viewing scheduling endpoints')
     .build();
-
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document);
+  
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api/docs', app, document, {
+    swaggerOptions: {
+      persistAuthorization: true,
+    },
+  });
 
   const port = process.env.PORT ? Number(process.env.PORT) : 3000;
   await app.listen(port, '0.0.0.0');

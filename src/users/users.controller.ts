@@ -16,7 +16,7 @@ import {
   FileTypeValidator,
   forwardRef,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UsersService } from './users.service';
 import { HousesService } from '../houses/houses.service';
@@ -118,7 +118,24 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Update authenticated agent profile' })
-  @ApiResponse({ status: 200, description: 'Updated agent profile' })
+  @ApiResponse({
+    status: 200,
+    description: 'Updated agent profile',
+    schema: {
+      example: {
+        _id: '64a1f2e9c...',
+        name: 'Eliezer James',
+        email: 'jameseliezer116@gmail.com',
+        phone: '+2348093117933',
+        bio: 'Updated bio',
+        avatarUrl: 'https://example.com/avatar.jpg',
+        verified: true,
+        updatedAt: '2025-01-01T12:00:00.000Z',
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'User not found' })
   updateProfile(
     @CurrentUser() user: RequestUser,
     @Body() dto: UpdateAgentProfileDto,
@@ -130,8 +147,36 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('avatar'))
   @ApiBearerAuth('access-token')
+  @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Upload avatar for authenticated user' })
-  @ApiResponse({ status: 200, description: 'Updated profile with avatarUrl' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        avatar: {
+          type: 'string',
+          format: 'binary',
+          description: 'Avatar image file (jpg, jpeg, png, webp, max 5MB)',
+        },
+      },
+      required: ['avatar'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Updated profile with avatarUrl',
+    schema: {
+      example: {
+        _id: '64a1f2e9c...',
+        name: 'Eliezer James',
+        email: 'jameseliezer116@gmail.com',
+        avatarUrl: 'https://res.cloudinary.com/.../avatar.jpg',
+        updatedAt: '2025-01-01T12:00:00.000Z',
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - invalid file type or size' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   async uploadAvatar(
     @CurrentUser() user: RequestUser,
     @UploadedFile(

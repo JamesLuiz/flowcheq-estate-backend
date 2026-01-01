@@ -36,12 +36,17 @@ export class AuthController {
           _id: '64a1f2e9c...',
           name: 'Eliezer James',
           email: 'jameseliezer116@gmail.com',
-          role: 'admin',
-          verified: true,
+          role: 'user',
+          verified: false,
+          phone: '+2348093117933',
+          bio: 'Real estate agent in Lagos',
+          avatarUrl: 'https://example.com/avatar.jpg',
         },
       },
     },
   })
+  @ApiResponse({ status: 400, description: 'Bad request - validation error' })
+  @ApiResponse({ status: 409, description: 'Conflict - user already exists' })
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
@@ -58,17 +63,32 @@ export class AuthController {
           _id: '64a1f2e9c...',
           name: 'Eliezer James',
           email: 'jameseliezer116@gmail.com',
-          role: 'admin',
+          role: 'user',
           verified: true,
+          phone: '+2348093117933',
+          bio: 'Real estate agent in Lagos',
+          avatarUrl: 'https://example.com/avatar.jpg',
         },
       },
     },
   })
+  @ApiResponse({ status: 400, description: 'Bad request - validation error' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - invalid credentials' })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
 
-  @Post('logout') 
+  @Post('logout')
+  @ApiOperation({ summary: 'Logout (client-side token removal)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Logout successful',
+    schema: {
+      example: {
+        success: true,
+      },
+    },
+  })
   logout() {
     return { success: true };
   }
@@ -85,11 +105,17 @@ export class AuthController {
         _id: '64a1f2e9c...',
         name: 'Eliezer James',
         email: 'jameseliezer116@gmail.com',
-        role: 'admin',
+        role: 'user',
         verified: true,
+        phone: '+2348093117933',
+        bio: 'Real estate agent in Lagos',
+        avatarUrl: 'https://example.com/avatar.jpg',
+        createdAt: '2025-01-01T00:00:00.000Z',
       },
     },
   })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'User not found' })
   async me(@CurrentUser() user: RequestUser) {
     const me = await this.usersService.findById(user.sub);
     if (!me) {
@@ -101,14 +127,33 @@ export class AuthController {
 
   @Post('forgot-password')
   @ApiOperation({ summary: 'Request password reset' })
-  @ApiResponse({ status: 200, description: 'Password reset email queued (if user exists)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Password reset email queued (if user exists)',
+    schema: {
+      example: {
+        message: 'If an account with that email exists, a password reset link has been sent.',
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - validation error' })
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto);
   }
 
   @Post('reset-password')
   @ApiOperation({ summary: 'Reset password with token' })
-  @ApiResponse({ status: 200, description: 'Password reset successful' })
+  @ApiResponse({
+    status: 200,
+    description: 'Password reset successful',
+    schema: {
+      example: {
+        message: 'Password reset successfully',
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - validation error or invalid token' })
+  @ApiResponse({ status: 404, description: 'Invalid or expired reset token' })
   async resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
   }

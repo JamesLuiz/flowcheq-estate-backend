@@ -16,6 +16,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { HousesService } from './houses.service';
 import { CreateHouseDto } from './dto/create-house.dto';
 import { UpdateHouseDto } from './dto/update-house.dto';
@@ -26,6 +27,7 @@ import { type RequestUser } from '../auth/decorators/current-user.decorator';
 import { CloudinaryService } from './cloudinary.service';
 
 @Controller('houses')
+@ApiTags('Houses')
 export class HousesController {
   constructor(
     private readonly housesService: HousesService,
@@ -35,6 +37,59 @@ export class HousesController {
   @Post()
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FilesInterceptor('images', 5))
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Create a new property listing' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', example: '3 bedroom flat in Lekki' },
+        description: { type: 'string', example: 'Spacious apartment with balcony and good lighting' },
+        price: { type: 'number', example: 15000000 },
+        location: { type: 'string', example: 'Lekki, Lagos' },
+        type: { type: 'string', example: 'Apartment' },
+        bedrooms: { type: 'number', example: 3 },
+        bathrooms: { type: 'number', example: 2 },
+        area: { type: 'number', example: 120 },
+        featured: { type: 'boolean', example: false },
+        lat: { type: 'number', example: 6.5244 },
+        lng: { type: 'number', example: 3.3792 },
+        images: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+          description: '3-5 image files (jpg, jpeg, png, webp, max 5MB each)',
+        },
+      },
+      required: ['title', 'description', 'price', 'location', 'type'],
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Property listing created successfully',
+    schema: {
+      example: {
+        _id: '64a1f2e9c...',
+        title: '3 bedroom flat in Lekki',
+        description: 'Spacious apartment with balcony and good lighting',
+        price: 15000000,
+        location: 'Lekki, Lagos',
+        type: 'Apartment',
+        images: ['https://res.cloudinary.com/.../image1.jpg'],
+        agentId: '64a1f2e9c...',
+        bedrooms: 3,
+        bathrooms: 2,
+        area: 120,
+        featured: false,
+        viewCount: 0,
+        whatsappClicks: 0,
+        createdAt: '2025-01-01T00:00:00.000Z',
+        updatedAt: '2025-01-01T00:00:00.000Z',
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - validation error or invalid image count' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   async create(
     @CurrentUser() user: RequestUser,
     @Body() body: any,
@@ -114,27 +169,139 @@ export class HousesController {
   }
 
   @Get()
+  @ApiOperation({ summary: 'Get all property listings with optional filters' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of property listings',
+    schema: {
+      example: {
+        data: [
+          {
+            _id: '64a1f2e9c...',
+            title: '3 bedroom flat in Lekki',
+            price: 15000000,
+            location: 'Lekki, Lagos',
+            type: 'Apartment',
+            images: ['https://res.cloudinary.com/.../image1.jpg'],
+            agentId: {
+              _id: '64a1f2e9c...',
+              name: 'Eliezer James',
+              verified: true,
+            },
+            bedrooms: 3,
+            bathrooms: 2,
+            area: 120,
+            featured: false,
+            viewCount: 10,
+            createdAt: '2025-01-01T00:00:00.000Z',
+          },
+        ],
+        total: 100,
+        limit: 20,
+        skip: 0,
+      },
+    },
+  })
   findAll(@Query() filters: FilterHousesDto) {
     return this.housesService.findAll(filters);
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Get a single property listing by ID' })
+  @ApiParam({ name: 'id', description: 'Property ID', example: '64a1f2e9c...' })
+  @ApiResponse({
+    status: 200,
+    description: 'Property listing details',
+    schema: {
+      example: {
+        _id: '64a1f2e9c...',
+        title: '3 bedroom flat in Lekki',
+        description: 'Spacious apartment with balcony and good lighting',
+        price: 15000000,
+        location: 'Lekki, Lagos',
+        type: 'Apartment',
+        images: ['https://res.cloudinary.com/.../image1.jpg'],
+        agentId: {
+          _id: '64a1f2e9c...',
+          name: 'Eliezer James',
+          email: 'jameseliezer116@gmail.com',
+          phone: '+2348093117933',
+          verified: true,
+          avatarUrl: 'https://example.com/avatar.jpg',
+        },
+        coordinates: { lat: 6.5244, lng: 3.3792 },
+        bedrooms: 3,
+        bathrooms: 2,
+        area: 120,
+        featured: false,
+        viewCount: 10,
+        whatsappClicks: 5,
+        createdAt: '2025-01-01T00:00:00.000Z',
+        updatedAt: '2025-01-01T00:00:00.000Z',
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: 'Property not found' })
   findOne(@Param('id') id: string) {
     return this.housesService.findOne(id, true);
   }
 
   @Post(':id/view')
+  @ApiOperation({ summary: 'Track a view on a property listing' })
+  @ApiParam({ name: 'id', description: 'Property ID', example: '64a1f2e9c...' })
+  @ApiResponse({
+    status: 200,
+    description: 'View tracked successfully',
+    schema: {
+      example: {
+        _id: '64a1f2e9c...',
+        viewCount: 11,
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: 'Property not found' })
   trackView(@Param('id') id: string) {
     return this.housesService.trackView(id);
   }
 
   @Post(':id/whatsapp-click')
+  @ApiOperation({ summary: 'Track a WhatsApp click on a property listing' })
+  @ApiParam({ name: 'id', description: 'Property ID', example: '64a1f2e9c...' })
+  @ApiResponse({
+    status: 200,
+    description: 'WhatsApp click tracked successfully',
+    schema: {
+      example: {
+        _id: '64a1f2e9c...',
+        whatsappClicks: 6,
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: 'Property not found' })
   trackWhatsAppClick(@Param('id') id: string) {
     return this.housesService.trackWhatsAppClick(id);
   }
 
   @Put(':id')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Update a property listing (owner only)' })
+  @ApiParam({ name: 'id', description: 'Property ID', example: '64a1f2e9c...' })
+  @ApiResponse({
+    status: 200,
+    description: 'Property listing updated successfully',
+    schema: {
+      example: {
+        _id: '64a1f2e9c...',
+        title: 'Updated title',
+        price: 16000000,
+        updatedAt: '2025-01-01T12:00:00.000Z',
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - not the property owner' })
+  @ApiResponse({ status: 404, description: 'Property not found' })
   update(
     @Param('id') id: string,
     @CurrentUser() user: RequestUser,
@@ -145,6 +312,22 @@ export class HousesController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Delete a property listing (owner only)' })
+  @ApiParam({ name: 'id', description: 'Property ID', example: '64a1f2e9c...' })
+  @ApiResponse({
+    status: 200,
+    description: 'Property listing deleted successfully',
+    schema: {
+      example: {
+        success: true,
+        message: 'Property listing deleted',
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - not the property owner' })
+  @ApiResponse({ status: 404, description: 'Property not found' })
   remove(
     @Param('id') id: string,
     @CurrentUser() user: RequestUser,
@@ -154,6 +337,21 @@ export class HousesController {
 
   @Get('stats/me')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Get property statistics for the authenticated user' })
+  @ApiResponse({
+    status: 200,
+    description: 'Property statistics',
+    schema: {
+      example: {
+        totalListings: 10,
+        totalViews: 500,
+        totalWhatsAppClicks: 50,
+        featuredListings: 2,
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   getStats(@CurrentUser() user: RequestUser) {
     return this.housesService.getStats(user.sub);
   }

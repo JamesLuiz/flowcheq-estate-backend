@@ -21,17 +21,16 @@
     "seed:admin": "ts-node ./scripts/seed-admin.ts"
   },
   "dependencies": {
-    "@nestjs/swagger": "^6.2.0",
-    "swagger-ui-express": "^4.6.3",
     "@emailjs/browser": "^4.4.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
     "@nestjs/jwt": "^11.0.1",
     "@nestjs/mapped-types": "^2.1.0",
-    "@nestjs/mongoose": "^11.0.3",
+    "@nestjs/mongoose": "^11.0.4",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/swagger": "^11.2.3",
     "@types/multer": "^2.0.0",
     "axios": "^1.13.2",
     "bcrypt": "^6.0.0",
@@ -45,7 +44,8 @@
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "streamifier": "^0.1.1"
+    "streamifier": "^0.1.1",
+    "swagger-ui-express": "^4.6.3"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -55,6 +55,7 @@
     "@nestjs/testing": "^11.0.1",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
+    "@types/mime": "^4.0.0",
     "@types/node": "^22.10.7",
     "@types/nodemailer": "^7.0.4",
     "@types/supertest": "^6.0.2",
