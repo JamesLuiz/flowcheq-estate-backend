@@ -181,6 +181,8 @@ async def fetch_properties(filters=None):
                 params['type'] = filters['type']
             if 'search' in filters and filters['search']:
                 params['search'] = filters['search']
+            if 'shared' in filters:
+                params['shared'] = 'true' if filters['shared'] else 'false'
             if 'limit' in filters:
                 params['limit'] = filters['limit']
             if 'skip' in filters:
@@ -223,7 +225,17 @@ def format_property_short(property):
     bedrooms = property.get('bedrooms', 'N/A')
     property_id = property.get('id') or property.get('_id')
     
-    return f"🏠 **{title}**\n💰 {price}\n📍 {location}\n🏘️ {type_name} • 🛏️ {bedrooms} Bedrooms\n🔗 ID: {property_id[:8]}..."
+    # Add shared property indicator
+    shared_info = ""
+    if property.get('isShared'):
+        available_slots = property.get('availableSlots', 0)
+        total_slots = property.get('totalSlots', 0)
+        if available_slots == 0:
+            shared_info = "\n🤝 **Fully Booked**"
+        else:
+            shared_info = f"\n🤝 **{available_slots}/{total_slots} slots available**"
+    
+    return f"🏠 **{title}**\n💰 {price}\n📍 {location}\n🏘️ {type_name} • 🛏️ {bedrooms} Bedrooms{shared_info}\n🔗 ID: {property_id[:8]}..."
 
 def generate_start_keyboard():
     """Generate main menu keyboard with real estate options"""
@@ -231,13 +243,16 @@ def generate_start_keyboard():
     keyboard.add(InlineKeyboardButton('🏠 Open House Me App', web_app=WebAppInfo(url="https://house-me.vercel.app/")))
     keyboard.add(
         InlineKeyboardButton('🔍 Search Properties', callback_data='search_properties'),
-        InlineKeyboardButton('⭐ My Favorites', callback_data='my_favorites')
+        InlineKeyboardButton('🤝 2-to-Tango Shared', callback_data='shared_properties')
     )
     keyboard.add(
-        InlineKeyboardButton('📍 Popular Areas', callback_data='popular_areas'),
-        InlineKeyboardButton('🔔 Property Alerts', callback_data='property_alerts')
+        InlineKeyboardButton('⭐ My Favorites', callback_data='my_favorites'),
+        InlineKeyboardButton('📍 Popular Areas', callback_data='popular_areas')
     )
-    keyboard.add(InlineKeyboardButton('💬 Contact Support', url='https://wa.me/2349152087229'))
+    keyboard.add(
+        InlineKeyboardButton('🔔 Property Alerts', callback_data='property_alerts'),
+        InlineKeyboardButton('💬 Contact Support', url='https://wa.me/2349152087229')
+    )
     keyboard.add(
         InlineKeyboardButton('📋 Agreement', callback_data='user_agreement'),
         InlineKeyboardButton('📜 Terms', callback_data='terms_of_service'),
@@ -402,13 +417,14 @@ async def start(message):
             f"with verified agents and quality listings across Abuja.\n\n"
             f"✨ **What we offer:**\n"
             f"• Browse verified property listings\n"
+            f"• 🤝 **2-to-Tango Shared Properties** - Find co-tenants and split costs\n"
             f"• Connect with trusted real estate agents\n"
             f"• List your properties (Agents & Landlords)\n"
             f"• Interactive map views\n"
             f"• Property comparison tools\n\n"
             f"📍 Serving Abuja residents with professionalism and integrity.\n\n"
-            f"💬 Need help? Contact our support team via WhatsApp:\n"
-            f"📱 +234 814 660 9734\n\n"
+            f"💬 Need help? Contact our support team:\n"
+            f"📱 WhatsApp/Call: +2349152087229\n\n"
             f"Tap the button below to get started!"
         )
 
@@ -456,8 +472,8 @@ async def handle_callbacks(call):
                 "**6. Service Availability**\n"
                 "• House Me reserves the right to modify or discontinue services\n"
                 "• We aim to maintain service availability but cannot guarantee 100% uptime\n\n"
-                "For questions about this agreement, contact us via WhatsApp:\n"
-                "📱 +234 814 660 9734"
+        "For questions about this agreement, contact us:\n"
+        "📱 WhatsApp/Call: +2349152087229"
             )
             keyboard = generate_back_keyboard()
             await bot.edit_message_text(
@@ -508,7 +524,7 @@ async def handle_callbacks(call):
                 "We may update these terms; continued use constitutes acceptance.\n\n"
                 "**11. Contact Information**\n"
                 "For questions about these terms:\n"
-                "📱 WhatsApp: +234 814 660 9734\n"
+                "📱 WhatsApp/Call: +2349152087229\n"
                 "📧 Email: abujashoemall@gmail.com\n\n"
                 "**Jurisdiction:** These terms are governed by Nigerian law."
             )
@@ -547,7 +563,7 @@ async def handle_callbacks(call):
                 "/contact - Contact support\n\n"
                 "**Need More Help?**\n"
                 "Our support team is ready to assist you:\n"
-                "📱 WhatsApp: +234 814 660 9734\n"
+                "📱 WhatsApp/Call: +2349152087229\n"
                 "📧 Email: abujashoemall@gmail.com\n\n"
                 "We're here to help you find your perfect property in Abuja! 🏠"
             )
@@ -663,6 +679,16 @@ async def handle_callbacks(call):
                 
                 # Format property details
                 text = f"🏠 **{property_data.get('title', 'Property Details')}**\n\n"
+                
+                # Add shared property indicator
+                if property_data.get('isShared'):
+                    available_slots = property_data.get('availableSlots', 0)
+                    total_slots = property_data.get('totalSlots', 0)
+                    if available_slots == 0:
+                        text += "🤝 **2-to-Tango: Fully Booked** ❌\n\n"
+                    else:
+                        text += f"🤝 **2-to-Tango Shared Property** - {available_slots}/{total_slots} slots available ✅\n\n"
+                
                 text += f"💰 **Price:** {format_price(property_data.get('price', 0))}\n"
                 
                 # Show street address only if subscribed
@@ -827,6 +853,41 @@ async def handle_callbacks(call):
                         parse_mode='Markdown'
                     )
         
+        elif call.data == 'shared_properties':
+            await bot.answer_callback_query(call.id, "Loading shared properties...")
+            
+            properties = await fetch_properties({'shared': True, 'limit': 20})
+            if properties:
+                text = (
+                    "🤝 **2-to-Tango Shared Properties**\n\n"
+                    f"Found {len(properties)} shared properties with available slots:\n\n"
+                    "**What is 2-to-Tango?**\n"
+                    "Properties that can be rented by multiple tenants in separate slots. "
+                    "Perfect for finding compatible roommates and splitting costs!\n\n"
+                    "Select a property to view details and book your slot:"
+                )
+                keyboard = generate_properties_list_keyboard(properties, 0)
+                await bot.edit_message_text(
+                    chat_id=call.message.chat.id,
+                    message_id=call.message.message_id,
+                    text=text,
+                    reply_markup=keyboard,
+                    parse_mode='Markdown'
+                )
+            else:
+                await bot.edit_message_text(
+                    chat_id=call.message.chat.id,
+                    message_id=call.message.message_id,
+                    text=(
+                        "🤝 **2-to-Tango Shared Properties**\n\n"
+                        "❌ No shared properties available at the moment.\n\n"
+                        "Check back later or browse all properties using the search feature.\n\n"
+                        "💬 Need help? Contact support: +2349152087229"
+                    ),
+                    reply_markup=generate_back_keyboard(),
+                    parse_mode='Markdown'
+                )
+        
         elif call.data == 'property_alerts':
             alerts_text = (
                 "🔔 **PROPERTY ALERTS**\n\n"
@@ -836,7 +897,8 @@ async def handle_callbacks(call):
                 "• Set price range alerts\n"
                 "• Get notified about properties in specific areas\n"
                 "• Receive alerts for your preferred property types\n\n"
-                "For now, you can browse properties using the search feature or contact our support team for assistance."
+                "For now, you can browse properties using the search feature or contact our support team for assistance.\n\n"
+                "💬 Support: +2349152087229"
             )
             keyboard = generate_back_keyboard()
             await bot.edit_message_text(
@@ -958,7 +1020,7 @@ async def handle_callbacks(call):
                         contact_text += f"\n📍 **Address:** {property_data.get('location')}\n"
                     
                     contact_text += f"\n🔗 **View Property in App:**\n{property_url}\n\n"
-                    contact_text += "💬 **Need Help?**\nContact our support: +234 814 660 9734"
+                    contact_text += "💬 **Need Help?**\nContact our support: +2349152087229"
                     
                     keyboard = InlineKeyboardMarkup()
                     keyboard.add(InlineKeyboardButton('🏠 Open in House Me App', web_app=WebAppInfo(url=property_url)))
@@ -975,7 +1037,7 @@ async def handle_callbacks(call):
                     contact_text += f"• Full street address\n"
                     contact_text += f"• Premium features\n\n"
                     contact_text += f"🔗 **View Property:**\n{property_url}\n\n"
-                    contact_text += "💬 **Need Help?**\nContact our support: +2349152087229"
+                    contact_text += "💬 **Need Help?**\nContact our support:\n📱 WhatsApp/Call: +2349152087229"
                     
                     keyboard = InlineKeyboardMarkup()
                     keyboard.add(InlineKeyboardButton('🏠 Open Property Page', web_app=WebAppInfo(url=property_url)))
@@ -1001,13 +1063,14 @@ async def handle_callbacks(call):
                 f"with verified agents and quality listings across Abuja.\n\n"
                 f"✨ **What we offer:**\n"
                 f"• Browse verified property listings\n"
+                f"• 🤝 **2-to-Tango Shared Properties** - Find co-tenants and split costs\n"
                 f"• Connect with trusted real estate agents\n"
                 f"• List your properties (Agents & Landlords)\n"
                 f"• Interactive map views\n"
                 f"• Property comparison tools\n\n"
                 f"📍 Serving Abuja residents with professionalism and integrity.\n\n"
-                f"💬 Need help? Contact our support team via WhatsApp:\n"
-                f"📱 +234 814 660 9734\n\n"
+                f"💬 Need help? Contact our support team:\n"
+                f"📱 WhatsApp/Call: +2349152087229\n\n"
                 f"Tap the button below to get started!"
             )
             keyboard = generate_start_keyboard()
@@ -1036,6 +1099,7 @@ async def help_command(message):
         "3. Create an account to list properties or save favorites\n\n"
         "**For Property Seekers:**\n"
         "• Browse verified listings across Abuja\n"
+        "• 🤝 **2-to-Tango Shared Properties** - Book slots and find co-tenants\n"
         "• Use filters to find your perfect property\n"
         "• View properties on interactive maps\n"
         "• Contact agents directly via WhatsApp\n"
@@ -1043,6 +1107,7 @@ async def help_command(message):
         "**For Agents & Landlords:**\n"
         "• Create an account and get verified\n"
         "• List your properties with photos and details\n"
+        "• Create **2-to-Tango shared properties** for multiple tenants\n"
         "• Manage your listings from your dashboard\n"
         "• Connect with potential buyers and renters\n\n"
         "**Available Commands:**\n"
@@ -1053,7 +1118,7 @@ async def help_command(message):
         "/contact - Contact support\n\n"
         "**Need More Help?**\n"
         "Our support team is ready to assist you:\n"
-        "📱 WhatsApp: +234 814 660 9734\n"
+        "📱 WhatsApp/Call: +2349152087229\n"
         "📧 Email: abujashoemall@gmail.com\n\n"
         "We're here to help you find your perfect property in Abuja! 🏠"
     )
@@ -1102,7 +1167,7 @@ async def terms_command(message):
         "We may update these terms; continued use constitutes acceptance.\n\n"
         "**11. Contact Information**\n"
         "For questions about these terms:\n"
-        "📱 WhatsApp: +234 814 660 9734\n"
+        "📱 WhatsApp/Call: +2349152087229\n"
         "📧 Email: abujashoemall@gmail.com\n\n"
         "**Jurisdiction:** These terms are governed by Nigerian law."
     )
@@ -1139,7 +1204,7 @@ async def agreement_command(message):
         "• House Me reserves the right to modify or discontinue services\n"
         "• We aim to maintain service availability but cannot guarantee 100% uptime\n\n"
         "For questions about this agreement, contact us via WhatsApp:\n"
-        "📱 +234 814 660 9734"
+        "📱 +234 915 208 7229"
     )
     keyboard = generate_back_keyboard()
     await bot.reply_to(message, agreement_text, reply_markup=keyboard, parse_mode='Markdown')
@@ -1150,9 +1215,9 @@ async def contact_command(message):
     contact_text = (
         "💬 **CONTACT HOUSE ME SUPPORT**\n\n"
         "We're here to help you with any questions or concerns!\n\n"
-        "**📱 WhatsApp Support:**\n"
+        "**📱 WhatsApp/Call Support:**\n"
         "Click here to chat: https://wa.me/2349152087229\n"
-        "Or send a message to: +234 814 660 9734\n\n"
+        "Or call/message: +2349152087229\n\n"
         "**📧 Email Support:**\n"
         "abujashoemall@gmail.com\n\n"
         "**🕐 Response Time:**\n"
