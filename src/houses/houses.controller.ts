@@ -355,4 +355,78 @@ export class HousesController {
   getStats(@CurrentUser() user: RequestUser) {
     return this.housesService.getStats(user.sub);
   }
+
+  @Post(':id/slots/book')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Book a slot in a shared property' })
+  @ApiParam({ name: 'id', description: 'Property ID', example: '64a1f2e9c...' })
+  @ApiResponse({
+    status: 200,
+    description: 'Slot booked successfully',
+    schema: {
+      example: {
+        success: true,
+        message: 'Slot booked successfully',
+        availableSlots: 1,
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'No available slots' })
+  @ApiResponse({ status: 404, description: 'Property not found' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async bookSlot(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.housesService.bookSlot(id, user.sub);
+  }
+
+  @Post(':id/slots/cancel')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Cancel a booked slot in a shared property' })
+  @ApiParam({ name: 'id', description: 'Property ID', example: '64a1f2e9c...' })
+  @ApiResponse({
+    status: 200,
+    description: 'Slot cancelled successfully',
+    schema: {
+      example: {
+        success: true,
+        message: 'Slot cancelled successfully',
+        availableSlots: 2,
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'User has not booked a slot' })
+  @ApiResponse({ status: 404, description: 'Property not found' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async cancelSlot(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.housesService.cancelSlot(id, user.sub);
+  }
+
+  @Get(':id/slots/co-tenants')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Get co-tenants for a shared property' })
+  @ApiParam({ name: 'id', description: 'Property ID', example: '64a1f2e9c...' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of co-tenants',
+    schema: {
+      example: {
+        coTenants: [
+          {
+            id: '64a1f2e9c...',
+            name: 'John Doe',
+            email: 'john@example.com',
+            phone: '+2348093117933',
+            avatarUrl: 'https://example.com/avatar.jpg',
+          },
+        ],
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: 'Property not found' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getCoTenants(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.housesService.getCoTenants(id, user.sub);
+  }
 }

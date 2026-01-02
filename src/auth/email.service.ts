@@ -183,6 +183,201 @@ export class EmailService {
     return { success: false, resetUrl, error: lastError.message };
   }
 
+  async sendWelcomeEmail(email: string, name: string) {
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const loginUrl = `${this.frontendUrl}/auth`;
+
+    const emailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .button { display: inline-block; padding: 12px 30px; background: #16a34a; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+            .feature { padding: 10px 0; border-bottom: 1px solid #eee; }
+            .feature:last-child { border-bottom: none; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Welcome to House Me! 🏠</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${name},</p>
+              <p>Thank you for joining House Me! We're excited to have you as part of our community.</p>
+              
+              <h3>What you can do:</h3>
+              <div class="feature">🏘️ Browse thousands of property listings</div>
+              <div class="feature">📅 Schedule property viewings</div>
+              <div class="feature">🔔 Set up alerts for new properties</div>
+              <div class="feature">💬 Connect directly with agents</div>
+              <div class="feature">🤝 Find shared properties with 2-to-Tango</div>
+              
+              <div style="text-align: center;">
+                <a href="${loginUrl}" class="button">Start Exploring</a>
+              </div>
+              
+              <p>If you have any questions, feel free to reach out to us:</p>
+              <p>📧 Email: housemedream@gmail.com</p>
+              <p>📱 WhatsApp: +234 915 208 7229</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>Finding your dream home in Nigeria.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (!this.transporter) {
+      this.logger.warn(`Email sending is disabled. Would send welcome email to: ${email}`);
+      return { success: false };
+    }
+
+    const mailOptions = {
+      from: `"House Me" <${fromEmail}>`,
+      to: email,
+      subject: `Welcome to House Me, ${name}! 🏠`,
+      html: emailBody,
+    };
+
+    try {
+      const info = await this.transporter.sendMail(mailOptions);
+      this.logger.log(`Welcome email sent to: ${email} (MessageId: ${info.messageId})`);
+      return { success: true, messageId: info.messageId };
+    } catch (error: any) {
+      this.logger.error(`Failed to send welcome email to ${email}:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async sendViewingStatusEmail(
+    email: string,
+    name: string,
+    propertyTitle: string,
+    status: 'confirmed' | 'cancelled' | 'completed',
+    scheduledDate: string,
+    scheduledTime: string,
+    agentName?: string,
+  ) {
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const statusMessages = {
+      confirmed: {
+        subject: `Viewing Confirmed - ${propertyTitle}`,
+        header: 'Your Viewing is Confirmed! ✅',
+        message: 'Great news! Your property viewing has been confirmed.',
+        color: '#16a34a',
+      },
+      cancelled: {
+        subject: `Viewing Cancelled - ${propertyTitle}`,
+        header: 'Viewing Cancelled',
+        message: 'Unfortunately, your property viewing has been cancelled.',
+        color: '#ef4444',
+      },
+      completed: {
+        subject: `Viewing Completed - ${propertyTitle}`,
+        header: 'Viewing Completed',
+        message: 'Thank you for completing your property viewing.',
+        color: '#3b82f6',
+      },
+    };
+
+    const { subject, header, message, color } = statusMessages[status];
+
+    const emailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: ${color}; color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>${header}</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${name},</p>
+              <p>${message}</p>
+              
+              <div class="details">
+                <h3>Viewing Details:</h3>
+                <p><strong>Property:</strong> ${propertyTitle}</p>
+                <p><strong>Date:</strong> ${scheduledDate}</p>
+                <p><strong>Time:</strong> ${scheduledTime}</p>
+                ${agentName ? `<p><strong>Agent:</strong> ${agentName}</p>` : ''}
+              </div>
+              
+              ${status === 'confirmed' ? `
+                <p>Please arrive on time for your viewing. If you need to reschedule, contact the agent directly.</p>
+              ` : ''}
+              
+              ${status === 'cancelled' ? `
+                <p>If you'd like to reschedule, please visit the property page and book a new viewing.</p>
+              ` : ''}
+              
+              ${status === 'completed' ? `
+                <p>We hope you found what you were looking for! Don't forget to leave a review for the agent.</p>
+              ` : ''}
+              
+              <p>Need help? Contact us:</p>
+              <p>📧 Email: housemedream@gmail.com</p>
+              <p>📱 WhatsApp: +234 915 208 7229</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (!this.transporter) {
+      this.logger.warn(`Email sending is disabled. Would send viewing status email to: ${email}`);
+      return { success: false };
+    }
+
+    const mailOptions = {
+      from: `"House Me" <${fromEmail}>`,
+      to: email,
+      subject,
+      html: emailBody,
+    };
+
+    try {
+      const info = await this.transporter.sendMail(mailOptions);
+      this.logger.log(`Viewing status email sent to: ${email} (MessageId: ${info.messageId})`);
+      return { success: true, messageId: info.messageId };
+    } catch (error: any) {
+      this.logger.error(`Failed to send viewing status email to ${email}:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
   async sendVerificationEmail(
     email: string,
     name: string,

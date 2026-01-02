@@ -66,6 +66,19 @@ export class House {
 
   @Prop({ default: false })
   deleted?: boolean;
+
+  // Shared Property (2-to-Tango) fields
+  @Prop({ default: false })
+  isShared?: boolean;
+
+  @Prop({ type: Number, min: 1, max: 10 })
+  totalSlots?: number;
+
+  @Prop({ type: Number, min: 0 })
+  availableSlots?: number;
+
+  @Prop({ type: [{ type: Types.ObjectId, ref: 'User' }], default: [] })
+  bookedByUsers?: Types.ObjectId[];
 }
 
 export type HouseDocument = HydratedDocument<House>;

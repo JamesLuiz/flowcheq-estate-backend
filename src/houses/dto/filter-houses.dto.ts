@@ -86,5 +86,13 @@ export class FilterHousesDto {
   @IsOptional()
   @Transform(({ value }) => (value !== undefined ? Number(value) : value))
   radius?: number; // in kilometers
+
+  @ApiProperty({ example: true, description: 'Filter for shared properties (2-to-Tango)', required: false })
+  @IsBoolean()
+  @IsOptional()
+  @Transform(({ value }) =>
+    value !== undefined ? value === 'true' || value === true : value,
+  )
+  shared?: boolean;
 }
 

@@ -37,10 +37,23 @@ export class HousesService {
       throw new ForbiddenException('You must be verified to upload properties. Please complete verification first.');
     }
 
-    const house = new this.houseModel({
+    // Initialize shared property fields
+    const houseData: any = {
       ...dto,
       agentId: new Types.ObjectId(agentId),
-    });
+    };
+
+    // If it's a shared property, initialize availableSlots
+    if (dto.isShared && dto.totalSlots) {
+      houseData.availableSlots = dto.totalSlots;
+      houseData.bookedByUsers = [];
+    } else {
+      houseData.isShared = false;
+      houseData.availableSlots = undefined;
+      houseData.bookedByUsers = undefined;
+    }
+
+    const house = new this.houseModel(houseData);
 
     const savedHouse = await house.save();
     await savedHouse.populate('agentId');
@@ -80,6 +93,11 @@ export class HousesService {
 
     if (filters.agentId) {
       query.agentId = new Types.ObjectId(filters.agentId);
+    }
+
+    // Filter for shared properties
+    if (filters.shared !== undefined) {
+      query.isShared = filters.shared;
     }
 
     if (filters.search) {
@@ -226,10 +244,53 @@ export class HousesService {
   ) {
     await this.ensureAgentOwnsHouse(agentId, houseId);
 
+    const house = await this.houseModel.findById(new Types.ObjectId(houseId)).exec();
+    if (!house) {
+      throw new NotFoundException('House not found');
+    }
+
+    // Handle shared property updates
+    const updateData: any = { ...dto };
+    
+    if (dto.isShared !== undefined) {
+      if (dto.isShared && dto.totalSlots) {
+        // If converting to shared or updating slots
+        const currentBooked = house.bookedByUsers?.length || 0;
+        const newTotalSlots = dto.totalSlots;
+        
+        // Ensure availableSlots doesn't exceed totalSlots
+        if (currentBooked > newTotalSlots) {
+          throw new ForbiddenException(`Cannot reduce slots below ${currentBooked} (currently booked)`);
+        }
+        
+        updateData.availableSlots = newTotalSlots - currentBooked;
+        updateData.totalSlots = newTotalSlots;
+        
+        // If not already shared, initialize bookedByUsers
+        if (!house.isShared) {
+          updateData.bookedByUsers = [];
+        }
+      } else if (!dto.isShared) {
+        // Converting from shared to non-shared
+        updateData.isShared = false;
+        updateData.availableSlots = undefined;
+        updateData.totalSlots = undefined;
+        updateData.bookedByUsers = undefined;
+      }
+    } else if (house.isShared && dto.totalSlots !== undefined) {
+      // Updating totalSlots for existing shared property
+      const currentBooked = house.bookedByUsers?.length || 0;
+      if (currentBooked > dto.totalSlots) {
+        throw new ForbiddenException(`Cannot reduce slots below ${currentBooked} (currently booked)`);
+      }
+      updateData.availableSlots = dto.totalSlots - currentBooked;
+      updateData.totalSlots = dto.totalSlots;
+    }
+
     const updatedHouse = await this.houseModel
       .findByIdAndUpdate(
         new Types.ObjectId(houseId),
-        { $set: dto },
+        { $set: updateData },
         { new: true },
       )
       .exec();
@@ -300,6 +361,131 @@ export class HousesService {
     }
   }
 
+  async bookSlot(houseId: string, userId: string) {
+    const house = await this.houseModel.findById(new Types.ObjectId(houseId)).exec();
+    
+    if (!house) {
+      throw new NotFoundException('House not found');
+    }
+
+    if (!house.isShared) {
+      throw new ForbiddenException('This property is not a shared property');
+    }
+
+    if ((house.availableSlots || 0) <= 0) {
+      throw new ForbiddenException('No available slots');
+    }
+
+    const userIdObj = new Types.ObjectId(userId);
+    
+    // Check if user already booked a slot
+    if (house.bookedByUsers?.some((id) => id.toString() === userId.toString())) {
+      throw new ForbiddenException('You have already booked a slot in this property');
+    }
+
+    // Add user to bookedByUsers and decrement availableSlots
+    await this.houseModel.findByIdAndUpdate(
+      new Types.ObjectId(houseId),
+      {
+        $push: { bookedByUsers: userIdObj },
+        $inc: { availableSlots: -1 },
+      },
+    ).exec();
+
+    const updatedHouse = await this.houseModel.findById(new Types.ObjectId(houseId)).exec();
+    
+    return {
+      success: true,
+      message: 'Slot booked successfully',
+      availableSlots: updatedHouse?.availableSlots || 0,
+    };
+  }
+
+  async cancelSlot(houseId: string, userId: string) {
+    const house = await this.houseModel.findById(new Types.ObjectId(houseId)).exec();
+    
+    if (!house) {
+      throw new NotFoundException('House not found');
+    }
+
+    if (!house.isShared) {
+      throw new ForbiddenException('This property is not a shared property');
+    }
+
+    const userIdObj = new Types.ObjectId(userId);
+    
+    // Check if user has booked a slot
+    if (!house.bookedByUsers?.some((id) => id.toString() === userId.toString())) {
+      throw new ForbiddenException('You have not booked a slot in this property');
+    }
+
+    // Remove user from bookedByUsers and increment availableSlots
+    await this.houseModel.findByIdAndUpdate(
+      new Types.ObjectId(houseId),
+      {
+        $pull: { bookedByUsers: userIdObj },
+        $inc: { availableSlots: 1 },
+      },
+    ).exec();
+
+    const updatedHouse = await this.houseModel.findById(new Types.ObjectId(houseId)).exec();
+    
+    return {
+      success: true,
+      message: 'Slot cancelled successfully',
+      availableSlots: updatedHouse?.availableSlots || 0,
+    };
+  }
+
+  async getCoTenants(houseId: string, userId: string) {
+    const house = await this.houseModel
+      .findById(new Types.ObjectId(houseId))
+      .populate('bookedByUsers', 'name email phone avatarUrl')
+      .exec();
+    
+    if (!house) {
+      throw new NotFoundException('House not found');
+    }
+
+    if (!house.isShared) {
+      throw new ForbiddenException('This property is not a shared property');
+    }
+
+    // Check if user has booked a slot
+    const userIdObj = new Types.ObjectId(userId);
+    const hasBooked = house.bookedByUsers?.some((id) => 
+      (typeof id === 'object' && id._id ? id._id.toString() : id.toString()) === userId.toString()
+    );
+
+    if (!hasBooked) {
+      throw new ForbiddenException('You must book a slot to view co-tenants');
+    }
+
+    // Get co-tenants (other users who booked slots)
+    const coTenants = (house.bookedByUsers || [])
+      .filter((id) => {
+        const idStr = typeof id === 'object' && id._id ? id._id.toString() : id.toString();
+        return idStr !== userId.toString();
+      })
+      .map((user: any) => {
+        const userObj = typeof user === 'object' && user._id ? user : { _id: user };
+        const populated = typeof user === 'object' && user.name ? user : null;
+        
+        if (populated) {
+          const { _id, password, __v, ...rest } = populated;
+          return {
+            id: _id?.toString() || populated._id?.toString(),
+            ...rest,
+          };
+        }
+        
+        return null;
+      })
+      .filter(Boolean);
+
+    return { coTenants };
+  }
+
   private toHouseResponse(
     house: HouseDocument | (House & { _id: Types.ObjectId; agentId?: any }),
   ) {
@@ -337,6 +523,16 @@ export class HousesService {
       }
     } else if (response.agentId) {
       response.agentId = response.agentId.toString();
+    }
+
+    // Convert bookedByUsers ObjectIds to strings
+    if (response.bookedByUsers && Array.isArray(response.bookedByUsers)) {
+      response.bookedByUsers = response.bookedByUsers.map((id: any) => {
+        if (typeof id === 'object' && id._id) {
+          return id._id.toString();
+        }
+        return id.toString();
+      });
     }
 
     return response;

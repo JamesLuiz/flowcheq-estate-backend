@@ -34,6 +34,13 @@ export class AuthService {
 
     const user = await this.usersService.create(payload);
 
+    // Send welcome email (don't fail registration if email fails)
+    try {
+      await this.emailService.sendWelcomeEmail(user.email, user.name);
+    } catch (error) {
+      console.error('Failed to send welcome email:', error);
+    }
+
     return this.buildAuthResponse(user);
   }
 

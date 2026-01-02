@@ -89,5 +89,18 @@ export class CreateHouseDto {
   @IsOptional()
   @Type(() => Boolean)
   featured?: boolean;
+
+  // Shared Property (2-to-Tango) fields
+  @ApiProperty({ example: false, required: false, description: 'Mark as shared property for multiple tenants' })
+  @IsBoolean()
+  @IsOptional()
+  @Type(() => Boolean)
+  isShared?: boolean;
+
+  @ApiProperty({ example: 2, required: false, description: 'Number of available slots for shared property' })
+  @IsInt()
+  @IsOptional()
+  @Type(() => Number)
+  totalSlots?: number;
 }
 
