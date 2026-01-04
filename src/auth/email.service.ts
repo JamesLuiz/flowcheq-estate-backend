@@ -944,7 +944,7 @@ export class EmailService {
     }
   }
 
-  async sendVerificationReminderEmail(email: string, name: string) {
+  async sendVerificationReminderEmail(email: string, name: string, customMessage?: string) {
     const fromEmail =
       this.configService.get<string>('SMTP_FROM') ||
       this.configService.get<string>('SMTP_USER') ||
@@ -976,6 +976,8 @@ export class EmailService {
             </div>
             <div class="content">
               <p>Hello ${name},</p>
+              
+              ${customMessage ? `<div class="alert"><p><strong>${customMessage}</strong></p></div>` : ''}
               
               <div class="alert">
                 <p><strong>Your account is not yet verified!</strong></p>
@@ -1033,6 +1035,345 @@ export class EmailService {
       return { success: true, messageId: info.messageId };
     } catch (error: any) {
       this.logger.error(`Failed to send verification reminder:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async sendAgentSuspensionEmail(email: string, name: string, reason?: string) {
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const emailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .alert { background: #fee2e2; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ef4444; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>⚠️ Account Suspended</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${name},</p>
+              
+              <div class="alert">
+                <p><strong>Your account has been suspended.</strong></p>
+                ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+              </div>
+              
+              <p>During this suspension period, your properties will not be visible to users.</p>
+              
+              <p>If you believe this is an error or have questions, please contact us:</p>
+              <p>📧 Email: housemedream@gmail.com</p>
+              <p>📱 WhatsApp: +234 915 208 7229</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (!this.transporter) {
+      this.logger.warn(`Email sending is disabled. Would send suspension email to: ${email}`);
+      return { success: false };
+    }
+
+    try {
+      const info = await this.transporter.sendMail({
+        from: `"House Me" <${fromEmail}>`,
+        to: email,
+        subject: `⚠️ Account Suspended - House Me`,
+        html: emailBody,
+      });
+      this.logger.log(`Suspension email sent to: ${email}`);
+      return { success: true, messageId: info.messageId };
+    } catch (error: any) {
+      this.logger.error(`Failed to send suspension email:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async sendAgentBanEmail(email: string, name: string, reason?: string) {
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const emailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .alert { background: #fee2e2; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #991b1b; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🚫 Account Banned</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${name},</p>
+              
+              <div class="alert">
+                <p><strong>Your account has been permanently banned.</strong></p>
+                ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+              </div>
+              
+              <p>All your properties have been delisted and will no longer be visible to users.</p>
+              
+              <p>If you believe this is an error, please contact us:</p>
+              <p>📧 Email: housemedream@gmail.com</p>
+              <p>📱 WhatsApp: +234 915 208 7229</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (!this.transporter) {
+      this.logger.warn(`Email sending is disabled. Would send ban email to: ${email}`);
+      return { success: false };
+    }
+
+    try {
+      const info = await this.transporter.sendMail({
+        from: `"House Me" <${fromEmail}>`,
+        to: email,
+        subject: `🚫 Account Banned - House Me`,
+        html: emailBody,
+      });
+      this.logger.log(`Ban email sent to: ${email}`);
+      return { success: true, messageId: info.messageId };
+    } catch (error: any) {
+      this.logger.error(`Failed to send ban email:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async sendAgentActivationEmail(email: string, name: string, reason?: string) {
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const emailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .alert { background: #d1fae5; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #10b981; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>✅ Account Reactivated</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${name},</p>
+              
+              <div class="alert">
+                <p><strong>Your account has been reactivated!</strong></p>
+                ${reason ? `<p><strong>Note:</strong> ${reason}</p>` : ''}
+              </div>
+              
+              <p>You can now access your account and your properties are visible to users again.</p>
+              
+              <p>If you have any questions, please contact us:</p>
+              <p>📧 Email: housemedream@gmail.com</p>
+              <p>📱 WhatsApp: +234 915 208 7229</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (!this.transporter) {
+      this.logger.warn(`Email sending is disabled. Would send activation email to: ${email}`);
+      return { success: false };
+    }
+
+    try {
+      const info = await this.transporter.sendMail({
+        from: `"House Me" <${fromEmail}>`,
+        to: email,
+        subject: `✅ Account Reactivated - House Me`,
+        html: emailBody,
+      });
+      this.logger.log(`Activation email sent to: ${email}`);
+      return { success: true, messageId: info.messageId };
+    } catch (error: any) {
+      this.logger.error(`Failed to send activation email:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async sendAgentDeletionEmail(email: string, name: string, reason?: string) {
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const emailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .alert { background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #6b7280; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Account Deleted</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${name},</p>
+              
+              <div class="alert">
+                <p><strong>Your account has been permanently deleted.</strong></p>
+                ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+              </div>
+              
+              <p>All your properties have been removed from the platform.</p>
+              
+              <p>If you believe this is an error, please contact us:</p>
+              <p>📧 Email: housemedream@gmail.com</p>
+              <p>📱 WhatsApp: +234 915 208 7229</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (!this.transporter) {
+      this.logger.warn(`Email sending is disabled. Would send deletion email to: ${email}`);
+      return { success: false };
+    }
+
+    try {
+      const info = await this.transporter.sendMail({
+        from: `"House Me" <${fromEmail}>`,
+        to: email,
+        subject: `Account Deleted - House Me`,
+        html: emailBody,
+      });
+      this.logger.log(`Deletion email sent to: ${email}`);
+      return { success: true, messageId: info.messageId };
+    } catch (error: any) {
+      this.logger.error(`Failed to send deletion email:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async sendPropertiesDelistedEmail(email: string, name: string, reason?: string) {
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const emailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .alert { background: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>⚠️ Properties Delisted</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${name},</p>
+              
+              <div class="alert">
+                <p><strong>All your properties have been delisted from the platform.</strong></p>
+                ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+              </div>
+              
+              <p>Your properties are no longer visible to users. If you have questions or concerns, please contact us.</p>
+              
+              <p>📧 Email: housemedream@gmail.com</p>
+              <p>📱 WhatsApp: +234 915 208 7229</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (!this.transporter) {
+      this.logger.warn(`Email sending is disabled. Would send delist email to: ${email}`);
+      return { success: false };
+    }
+
+    try {
+      const info = await this.transporter.sendMail({
+        from: `"House Me" <${fromEmail}>`,
+        to: email,
+        subject: `⚠️ Properties Delisted - House Me`,
+        html: emailBody,
+      });
+      this.logger.log(`Delist email sent to: ${email}`);
+      return { success: true, messageId: info.messageId };
+    } catch (error: any) {
+      this.logger.error(`Failed to send delist email:`, error);
       return { success: false, error: error.message };
     }
   }

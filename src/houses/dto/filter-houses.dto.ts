@@ -94,5 +94,10 @@ export class FilterHousesDto {
     value !== undefined ? value === 'true' || value === true : value,
   )
   shared?: boolean;
+
+  @ApiProperty({ example: 'buy', description: 'Filter by listing type: rent or buy', required: false, enum: ['rent', 'buy'] })
+  @IsString()
+  @IsOptional()
+  listingType?: 'rent' | 'buy';
 }
 

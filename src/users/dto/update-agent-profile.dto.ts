@@ -66,5 +66,19 @@ export class UpdateAgentProfileDto {
   @Type(() => BankAccountDto)
   @IsOptional()
   bankAccount?: BankAccountDto;
+
+  @ApiProperty({ example: 'active', required: false, enum: ['active', 'suspended', 'banned'] })
+  @IsString()
+  @IsOptional()
+  accountStatus?: 'active' | 'suspended' | 'banned';
+
+  @ApiProperty({ example: '2025-12-31T00:00:00.000Z', required: false })
+  @IsOptional()
+  suspendedUntil?: Date;
+
+  @ApiProperty({ example: 'Violation of terms', required: false })
+  @IsString()
+  @IsOptional()
+  suspensionReason?: string;
 }
 

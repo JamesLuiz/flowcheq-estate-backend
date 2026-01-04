@@ -66,7 +66,7 @@ export class HousesService {
   }
 
   async findAll(filters: FilterHousesDto) {
-    const query: FilterQuery<HouseDocument> = { deleted: { $ne: true } };
+    const query: FilterQuery<HouseDocument> = { deleted: { $ne: true }, flagged: { $ne: true } };
     const escapeRegex = (value: string) =>
       value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -101,6 +101,11 @@ export class HousesService {
     // Filter for shared properties
     if (filters.shared !== undefined) {
       query.isShared = filters.shared;
+    }
+
+    // Filter by listing type (rent or buy)
+    if (filters.listingType) {
+      query.listingType = filters.listingType;
     }
 
     if (filters.search) {
@@ -169,6 +174,21 @@ export class HousesService {
         return dateB - dateA;
       });
     }
+
+    // Filter out properties from suspended/banned agents
+    houseDocs = houseDocs.filter((house: any) => {
+      const agent = house.agentId;
+      if (!agent) return true;
+      // Exclude if agent is suspended or banned
+      if (agent.accountStatus === 'suspended' || agent.accountStatus === 'banned') {
+        return false;
+      }
+      // Exclude if agent is suspended until a future date
+      if (agent.suspendedUntil && new Date(agent.suspendedUntil) > new Date()) {
+        return false;
+      }
+      return true;
+    });
 
     // Apply pagination
     const total = houseDocs.length;
@@ -604,5 +624,70 @@ export class HousesService {
     }
 
     return response;
+  }
+
+  // ============ ADMIN METHODS ============
+
+  async findAllAdmin(filters?: { flagged?: boolean }) {
+    const query: FilterQuery<HouseDocument> = { deleted: { $ne: true } };
+    
+    if (filters?.flagged !== undefined) {
+      query.flagged = filters.flagged;
+    }
+
+    const houses = await this.houseModel
+      .find(query)
+      .populate('agentId')
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+
+    return {
+      data: houses.map((house) => this.toHouseResponse(house)),
+    };
+  }
+
+  async flagProperty(propertyId: string, reason?: string) {
+    const house = await this.houseModel.findById(propertyId);
+    if (!house) {
+      throw new NotFoundException('Property not found');
+    }
+
+    house.flagged = true;
+    house.flaggedReason = reason;
+    house.flaggedAt = new Date();
+    await house.save();
+
+    return this.toHouseResponse(house);
+  }
+
+  async unflagProperty(propertyId: string) {
+    const house = await this.houseModel.findById(propertyId);
+    if (!house) {
+      throw new NotFoundException('Property not found');
+    }
+
+    house.flagged = false;
+    house.flaggedReason = undefined;
+    house.flaggedAt = undefined;
+    await house.save();
+
+    return this.toHouseResponse(house);
+  }
+
+  async delistAgentProperties(agentId: string) {
+    await this.houseModel.updateMany(
+      { agentId: new Types.ObjectId(agentId), deleted: { $ne: true } },
+      { deleted: true },
+    );
+    return { success: true, message: 'All agent properties have been delisted' };
+  }
+
+  async delete(houseId: string): Promise<void> {
+    const house = await this.houseModel.findById(houseId);
+    if (!house) {
+      throw new NotFoundException('Property not found');
+    }
+    await this.houseModel.findByIdAndUpdate(houseId, { deleted: true }).exec();
   }
 }

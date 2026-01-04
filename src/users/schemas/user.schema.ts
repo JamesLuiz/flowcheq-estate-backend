@@ -69,6 +69,16 @@ export class User {
   // Wallet/Earnings balance
   @Prop({ type: Number, default: 0 })
   walletBalance?: number;
+
+  // Account status fields
+  @Prop({ default: 'active', enum: ['active', 'suspended', 'banned'], index: true })
+  accountStatus?: 'active' | 'suspended' | 'banned';
+
+  @Prop()
+  suspendedUntil?: Date;
+
+  @Prop()
+  suspensionReason?: string;
 }
 
 export type UserDocument = HydratedDocument<User>;

@@ -143,6 +143,14 @@ export class UsersService {
       .exec();
   }
 
+  async delete(id: string): Promise<void> {
+    const user = await this.userModel.findById(id);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    await this.userModel.findByIdAndDelete(id).exec();
+  }
+
   toSafeUser(user: UserDocument) {
     const plain = user.toObject();
     const { password, __v, _id, resetToken, resetTokenExpiry, ...rest } = plain as any;

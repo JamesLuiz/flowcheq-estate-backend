@@ -19,6 +19,10 @@ import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { type RequestUser } from '../auth/decorators/current-user.decorator';
+import { HousesService } from '../houses/houses.service';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { Settings, SettingsDocument } from './schemas/settings.schema';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard)
@@ -31,6 +35,8 @@ export class AdminController {
     private readonly emailService: EmailService,
     private readonly viewingsService: ViewingsService,
     private readonly configService: ConfigService,
+    private readonly housesService: HousesService,
+    @InjectModel(Settings.name) private readonly settingsModel: Model<SettingsDocument>,
   ) {}
 
   private ensureAdmin(user: RequestUser) {
@@ -271,6 +277,14 @@ export class AdminController {
   })
   async getPlatformFeePercentage(@CurrentUser() user: RequestUser) {
     this.ensureAdmin(user);
+    
+    // Try to get from database first
+    const settings = await this.settingsModel.findOne({ key: 'platformFeePercentage' });
+    if (settings && typeof settings.value === 'number') {
+      return { platformFeePercentage: settings.value };
+    }
+    
+    // Fallback to environment variable
     const percentage = parseFloat(
       this.configService.get<string>('VIEWING_FEE_PERCENTAGE') || '10',
     );
@@ -318,10 +332,332 @@ export class AdminController {
     // Note: In a production environment, you'd want to store this in a database settings collection
     // For now, we'll just validate and return a message
     // The actual value is read from environment variables
+    // Store in database
+    await this.settingsModel.findOneAndUpdate(
+      { key: 'platformFeePercentage' },
+      { key: 'platformFeePercentage', value: body.platformFeePercentage, description: 'Platform fee percentage for viewing fees' },
+      { upsert: true, new: true },
+    );
+
     return {
       success: true,
       platformFeePercentage: body.platformFeePercentage,
-      message: 'Platform fee percentage updated. Note: Update VIEWING_FEE_PERCENTAGE environment variable and restart server for changes to take effect.',
+      message: 'Platform fee percentage updated successfully.',
     };
+  }
+
+  // ============ UNVERIFIED AGENTS ============
+
+  @Get('agents/unverified')
+  @ApiOperation({ summary: 'Get all unverified agents' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of unverified agents',
+  })
+  async getUnverifiedAgents(@CurrentUser() user: RequestUser) {
+    this.ensureAdmin(user);
+    const agents = await this.usersService.findAgents(
+      { verified: { $ne: true }, verificationStatus: { $ne: 'approved' } },
+      {},
+    );
+    return {
+      data: agents.map((agent) => this.usersService.toSafeUser(agent)),
+    };
+  }
+
+  @Post('agents/unverified/bulk-email')
+  @ApiOperation({ summary: 'Send bulk email to all unverified agents' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', description: 'Custom message to include in email' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Bulk email sent',
+  })
+  async sendBulkEmailToUnverifiedAgents(
+    @CurrentUser() user: RequestUser,
+    @Body() body: { message?: string },
+  ) {
+    this.ensureAdmin(user);
+    const agents = await this.usersService.findAgents(
+      { verified: { $ne: true }, verificationStatus: { $ne: 'approved' } },
+      {},
+    );
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const agent of agents) {
+      try {
+        await this.emailService.sendVerificationReminderEmail(
+          agent.email,
+          agent.name,
+          body.message,
+        );
+        successCount++;
+      } catch (error) {
+        failCount++;
+      }
+    }
+
+    return {
+      success: true,
+      message: `Bulk email sent to ${successCount} agents. ${failCount} failed.`,
+      successCount,
+      failCount,
+      total: agents.length,
+    };
+  }
+
+  // ============ AGENT MANAGEMENT ============
+
+  @Get('agents')
+  @ApiOperation({ summary: 'Get all agents (admin)' })
+  @ApiQuery({ name: 'status', required: false, enum: ['active', 'suspended', 'banned'] })
+  @ApiResponse({
+    status: 200,
+    description: 'List of agents',
+  })
+  async getAllAgents(
+    @CurrentUser() user: RequestUser,
+    @Query('status') status?: string,
+  ) {
+    this.ensureAdmin(user);
+    const filter: any = { role: { $in: ['agent', 'landlord'] } };
+    if (status) {
+      filter.accountStatus = status;
+    }
+    const agents = await this.usersService.findAgents(filter, {});
+    return {
+      data: agents.map((agent) => this.usersService.toSafeUser(agent)),
+    };
+  }
+
+  @Patch('agents/:agentId/suspend')
+  @ApiOperation({ summary: 'Suspend an agent' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        reason: { type: 'string' },
+        suspendedUntil: { type: 'string', format: 'date-time' },
+      },
+    },
+  })
+  async suspendAgent(
+    @CurrentUser() user: RequestUser,
+    @Param('agentId') agentId: string,
+    @Body() body: { reason?: string; suspendedUntil?: string },
+  ) {
+    this.ensureAdmin(user);
+    const updateData: any = {
+      accountStatus: 'suspended',
+      suspensionReason: body.reason,
+    };
+    if (body.suspendedUntil) {
+      updateData.suspendedUntil = new Date(body.suspendedUntil);
+    }
+    const agent = await this.usersService.updateAgentProfile(agentId, updateData);
+    
+    // Send email notification
+    if (agent.email) {
+      await this.emailService.sendAgentSuspensionEmail(agent.email, agent.name, body.reason);
+    }
+
+    return agent;
+  }
+
+  @Patch('agents/:agentId/ban')
+  @ApiOperation({ summary: 'Ban an agent' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        reason: { type: 'string' },
+      },
+    },
+  })
+  async banAgent(
+    @CurrentUser() user: RequestUser,
+    @Param('agentId') agentId: string,
+    @Body() body: { reason?: string },
+  ) {
+    this.ensureAdmin(user);
+    const agent = await this.usersService.updateAgentProfile(agentId, {
+      accountStatus: 'banned',
+      suspensionReason: body.reason,
+    });
+
+    // Delist all properties
+    await this.housesService.delistAgentProperties(agentId);
+
+    // Send email notification
+    if (agent.email) {
+      await this.emailService.sendAgentBanEmail(agent.email, agent.name, body.reason);
+    }
+
+    return agent;
+  }
+
+  @Patch('agents/:agentId/activate')
+  @ApiOperation({ summary: 'Activate/reactivate an agent' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        reason: { type: 'string' },
+      },
+    },
+  })
+  async activateAgent(
+    @CurrentUser() user: RequestUser,
+    @Param('agentId') agentId: string,
+    @Body() body: { reason?: string },
+  ) {
+    this.ensureAdmin(user);
+    const agent = await this.usersService.updateAgentProfile(agentId, {
+      accountStatus: 'active',
+      suspendedUntil: undefined,
+      suspensionReason: undefined,
+    });
+
+    // Send email notification
+    if (agent.email) {
+      await this.emailService.sendAgentActivationEmail(agent.email, agent.name, body.reason);
+    }
+
+    return agent;
+  }
+
+  @Delete('agents/:agentId')
+  @ApiOperation({ summary: 'Delete an agent account' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        reason: { type: 'string' },
+      },
+    },
+  })
+  async deleteAgent(
+    @CurrentUser() user: RequestUser,
+    @Param('agentId') agentId: string,
+    @Body() body: { reason?: string },
+  ) {
+    this.ensureAdmin(user);
+    
+    // Get agent info before deletion
+    const agent = await this.usersService.findById(agentId);
+    
+    // Delist all properties first
+    await this.housesService.delistAgentProperties(agentId);
+    
+    // Send email notification before deletion
+    if (agent?.email) {
+      await this.emailService.sendAgentDeletionEmail(agent.email, agent.name, body.reason);
+    }
+    
+    // Delete agent
+    await this.usersService.delete(agentId);
+    
+    return { success: true, message: 'Agent deleted successfully' };
+  }
+
+  @Post('agents/:agentId/delist-properties')
+  @ApiOperation({ summary: 'Delist all properties of an agent' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        reason: { type: 'string' },
+      },
+    },
+  })
+  async delistAgentProperties(
+    @CurrentUser() user: RequestUser,
+    @Param('agentId') agentId: string,
+    @Body() body: { reason?: string },
+  ) {
+    this.ensureAdmin(user);
+    
+    const agent = await this.usersService.findById(agentId);
+    if (!agent) {
+      throw new ForbiddenException('Agent not found');
+    }
+    
+    await this.housesService.delistAgentProperties(agentId);
+    
+    // Send email notification
+    if (agent.email) {
+      await this.emailService.sendPropertiesDelistedEmail(agent.email, agent.name, body.reason);
+    }
+    
+    return { success: true, message: 'All agent properties have been delisted' };
+  }
+
+  // ============ PROPERTY MANAGEMENT ============
+
+  @Get('properties')
+  @ApiOperation({ summary: 'Get all properties (admin)' })
+  @ApiQuery({ name: 'flagged', required: false, type: 'boolean' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of properties',
+  })
+  async getAllProperties(
+    @CurrentUser() user: RequestUser,
+    @Query('flagged') flagged?: string,
+  ) {
+    this.ensureAdmin(user);
+    const filters: any = {};
+    if (flagged === 'true') {
+      filters.flagged = true;
+    }
+    return this.housesService.findAllAdmin(filters);
+  }
+
+  @Patch('properties/:propertyId/flag')
+  @ApiOperation({ summary: 'Flag a property' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        reason: { type: 'string' },
+      },
+    },
+  })
+  async flagProperty(
+    @CurrentUser() user: RequestUser,
+    @Param('propertyId') propertyId: string,
+    @Body() body: { reason?: string },
+  ) {
+    this.ensureAdmin(user);
+    return this.housesService.flagProperty(propertyId, body.reason);
+  }
+
+  @Patch('properties/:propertyId/unflag')
+  @ApiOperation({ summary: 'Unflag a property' })
+  async unflagProperty(
+    @CurrentUser() user: RequestUser,
+    @Param('propertyId') propertyId: string,
+  ) {
+    this.ensureAdmin(user);
+    return this.housesService.unflagProperty(propertyId);
+  }
+
+  @Delete('properties/:propertyId')
+  @ApiOperation({ summary: 'Delete a property (admin)' })
+  async deleteProperty(
+    @CurrentUser() user: RequestUser,
+    @Param('propertyId') propertyId: string,
+  ) {
+    this.ensureAdmin(user);
+    await this.housesService.delete(propertyId);
+    return { success: true, message: 'Property deleted successfully' };
   }
 }

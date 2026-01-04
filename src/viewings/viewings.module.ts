@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { ViewingsController } from './viewings.controller';
 import { ViewingsService } from './viewings.service';
 import { Viewing, ViewingSchema } from './schemas/viewing.schema';
+import { Settings, SettingsSchema } from '../admin/schemas/settings.schema';
 import { UsersModule } from '../users/users.module';
 import { HousesModule } from '../houses/houses.module';
 import { CloudinaryService } from '../houses/cloudinary.service';
@@ -10,7 +11,10 @@ import { PromotionsModule } from '../promotions/promotions.module';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Viewing.name, schema: ViewingSchema }]),
+    MongooseModule.forFeature([
+      { name: Viewing.name, schema: ViewingSchema },
+      { name: Settings.name, schema: SettingsSchema },
+    ]),
     UsersModule,
     HousesModule,
     forwardRef(() => PromotionsModule),

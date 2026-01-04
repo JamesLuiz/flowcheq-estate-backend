@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, Inject, forwardRef }
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Viewing, ViewingDocument } from './schemas/viewing.schema';
+import { Settings, SettingsDocument } from '../admin/schemas/settings.schema';
 import { UsersService } from '../users/users.service';
 import { HousesService } from '../houses/houses.service';
 import { ConfigService } from '@nestjs/config';
@@ -12,6 +13,7 @@ import { FlutterwaveService } from '../promotions/flutterwave.service';
 export class ViewingsService {
   constructor(
     @InjectModel(Viewing.name) private viewingModel: Model<ViewingDocument>,
+    @InjectModel(Settings.name) private settingsModel: Model<SettingsDocument>,
     private usersService: UsersService,
     private housesService: HousesService,
     private configService: ConfigService,
@@ -384,10 +386,20 @@ export class ViewingsService {
       return this.toResponse(viewing);
     }
 
-    // Calculate fees (default 10% platform fee, can be configured)
-    const platformFeePercentage = parseFloat(
+    // Calculate fees (get from database or env variable)
+    let platformFeePercentage = parseFloat(
       this.configService.get<string>('VIEWING_FEE_PERCENTAGE') || '10',
     );
+    
+    // Try to get from database settings
+    try {
+      const settings = await this.settingsModel.findOne({ key: 'platformFeePercentage' });
+      if (settings && typeof settings.value === 'number') {
+        platformFeePercentage = settings.value;
+      }
+    } catch (error) {
+      // If Settings model not available, use env variable
+    }
     const platformFee = (viewing.viewingFee! * platformFeePercentage) / 100;
     const agentAmount = viewing.viewingFee! - platformFee;
 

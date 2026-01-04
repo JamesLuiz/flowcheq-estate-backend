@@ -67,6 +67,15 @@ export class House {
   @Prop({ default: false })
   deleted?: boolean;
 
+  @Prop({ default: false, index: true })
+  flagged?: boolean;
+
+  @Prop()
+  flaggedReason?: string;
+
+  @Prop()
+  flaggedAt?: Date;
+
   // Shared Property (2-to-Tango) fields
   @Prop({ default: false })
   isShared?: boolean;
@@ -83,6 +92,10 @@ export class House {
   // Viewing/Tour fee in Naira
   @Prop({ type: Number, min: 0, default: 0 })
   viewingFee?: number;
+
+  // Listing type: 'rent' or 'buy'
+  @Prop({ type: String, enum: ['rent', 'buy'], default: 'buy', index: true })
+  listingType?: 'rent' | 'buy';
 }
 
 export type HouseDocument = HydratedDocument<House>;

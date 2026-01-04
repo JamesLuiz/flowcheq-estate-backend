@@ -108,5 +108,10 @@ export class CreateHouseDto {
   @IsOptional()
   @Type(() => Number)
   viewingFee?: number;
+
+  @ApiProperty({ example: 'buy', required: false, description: 'Listing type: rent or buy', enum: ['rent', 'buy'] })
+  @IsString()
+  @IsOptional()
+  listingType?: 'rent' | 'buy';
 }
 
