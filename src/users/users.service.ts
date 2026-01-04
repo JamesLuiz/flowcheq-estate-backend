@@ -102,8 +102,16 @@ export class UsersService {
     filter: FilterQuery<UserDocument> = {},
     options: { limit?: number } = {},
   ): Promise<UserDocument[]> {
+    // If filter doesn't specify role, default to both agent and landlord
+    const roleFilter = filter.role 
+      ? filter.role 
+      : { $in: [UserRole.Agent, UserRole.Landlord] };
+    
+    // Remove role from filter to avoid duplication, then add our role filter
+    const { role, ...restFilter } = filter;
+    
     let query = this.userModel
-      .find({ role: UserRole.Agent, ...filter })
+      .find({ role: roleFilter, ...restFilter })
       .sort({ createdAt: -1 });
 
     if (options.limit) {

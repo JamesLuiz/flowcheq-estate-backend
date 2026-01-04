@@ -357,7 +357,11 @@ export class AdminController {
   async getUnverifiedAgents(@CurrentUser() user: RequestUser) {
     this.ensureAdmin(user);
     const agents = await this.usersService.findAgents(
-      { verified: { $ne: true }, verificationStatus: { $ne: 'approved' } },
+      { 
+        role: { $in: ['agent', 'landlord'] },
+        verified: { $ne: true }, 
+        verificationStatus: { $ne: 'approved' } 
+      },
       {},
     );
     return {
@@ -385,7 +389,11 @@ export class AdminController {
   ) {
     this.ensureAdmin(user);
     const agents = await this.usersService.findAgents(
-      { verified: { $ne: true }, verificationStatus: { $ne: 'approved' } },
+      { 
+        role: { $in: ['agent', 'landlord'] },
+        verified: { $ne: true }, 
+        verificationStatus: { $ne: 'approved' } 
+      },
       {},
     );
 
