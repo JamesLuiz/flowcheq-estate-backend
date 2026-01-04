@@ -13,11 +13,11 @@ import { UsersModule } from '../users/users.module';
       { name: Promotion.name, schema: PromotionSchema },
     ]),
     forwardRef(() => HousesModule),
-    UsersModule,
+    forwardRef(() => UsersModule),
   ],
   controllers: [PromotionsController],
   providers: [PromotionsService, FlutterwaveService],
-  exports: [PromotionsService],
+  exports: [PromotionsService, FlutterwaveService],
 })
 export class PromotionsModule {}
 

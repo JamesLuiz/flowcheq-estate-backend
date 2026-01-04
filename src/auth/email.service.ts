@@ -183,13 +183,82 @@ export class EmailService {
     return { success: false, resetUrl, error: lastError.message };
   }
 
-  async sendWelcomeEmail(email: string, name: string) {
+  async sendWelcomeEmail(email: string, name: string, role: 'user' | 'agent' | 'landlord' = 'user') {
     const fromEmail =
       this.configService.get<string>('SMTP_FROM') ||
       this.configService.get<string>('SMTP_USER') ||
       'noreply@houseme.com';
 
     const loginUrl = `${this.frontendUrl}/auth`;
+    const dashboardUrl = `${this.frontendUrl}/dashboard`;
+    const agentGuideUrl = `${this.frontendUrl}/agent-guide`;
+
+    // Role-specific content
+    const roleContent = {
+      user: {
+        subject: `Welcome to House Me, ${name}! 🏠`,
+        headerColor: '#16a34a',
+        headerText: 'Welcome to House Me! 🏠',
+        intro: "Thank you for joining House Me! We're excited to help you find your perfect home.",
+        features: `
+          <div class="feature">🏘️ Browse thousands of property listings</div>
+          <div class="feature">📅 Schedule property viewings</div>
+          <div class="feature">🔔 Set up alerts for new properties</div>
+          <div class="feature">💬 Connect directly with agents</div>
+          <div class="feature">🤝 Find shared properties with 2-to-Tango</div>
+        `,
+        ctaText: 'Start Exploring',
+        ctaUrl: loginUrl,
+      },
+      agent: {
+        subject: `Welcome Agent ${name}! Start Listing Properties 🏢`,
+        headerColor: '#3b82f6',
+        headerText: 'Welcome to House Me, Agent! 🏢',
+        intro: "Congratulations on joining House Me as an Agent! You're now part of Nigeria's premier property marketplace.",
+        features: `
+          <div class="feature">🏠 List unlimited properties for sale or rent</div>
+          <div class="feature">📊 Track your property performance</div>
+          <div class="feature">👥 Connect with interested buyers/renters</div>
+          <div class="feature">✅ Get verified to boost your credibility</div>
+          <div class="feature">📅 Manage property viewings easily</div>
+          <div class="feature">🤝 List shared properties (2-to-Tango)</div>
+        `,
+        ctaText: 'Go to Dashboard',
+        ctaUrl: dashboardUrl,
+        extraNote: `
+          <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0;">
+            <strong>⚠️ Important:</strong> Please complete your verification to start listing properties. 
+            Verified agents get more visibility and trust from clients.
+          </div>
+          <p>📖 <a href="${agentGuideUrl}" style="color: #3b82f6;">Read our Agent Guide</a> to learn best practices.</p>
+        `,
+      },
+      landlord: {
+        subject: `Welcome Landlord ${name}! List Your Properties 🏡`,
+        headerColor: '#8b5cf6',
+        headerText: 'Welcome to House Me, Landlord! 🏡',
+        intro: "Welcome to House Me! As a landlord, you can now list your properties and connect with potential tenants.",
+        features: `
+          <div class="feature">🏠 List your properties for rent or sale</div>
+          <div class="feature">📊 Manage all your listings in one place</div>
+          <div class="feature">👥 Receive inquiries directly from tenants</div>
+          <div class="feature">✅ Get verified to increase tenant trust</div>
+          <div class="feature">📅 Schedule and manage property viewings</div>
+          <div class="feature">🤝 Offer shared living arrangements</div>
+        `,
+        ctaText: 'Go to Dashboard',
+        ctaUrl: dashboardUrl,
+        extraNote: `
+          <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0;">
+            <strong>⚠️ Important:</strong> Complete your verification to start listing properties. 
+            Verified landlords attract more quality tenants.
+          </div>
+          <p>📖 <a href="${agentGuideUrl}" style="color: #8b5cf6;">Read our Property Guide</a> for tips on successful listings.</p>
+        `,
+      },
+    };
+
+    const content = roleContent[role];
 
     const emailBody = `
       <!DOCTYPE html>
@@ -200,32 +269,31 @@ export class EmailService {
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .header { background: ${content.headerColor}; color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
             .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-            .button { display: inline-block; padding: 12px 30px; background: #16a34a; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .button { display: inline-block; padding: 12px 30px; background: ${content.headerColor}; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
             .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
             .feature { padding: 10px 0; border-bottom: 1px solid #eee; }
             .feature:last-child { border-bottom: none; }
+            a { color: ${content.headerColor}; }
           </style>
         </head>
         <body>
           <div class="container">
             <div class="header">
-              <h1>Welcome to House Me! 🏠</h1>
+              <h1>${content.headerText}</h1>
             </div>
             <div class="content">
               <p>Hello ${name},</p>
-              <p>Thank you for joining House Me! We're excited to have you as part of our community.</p>
+              <p>${content.intro}</p>
               
               <h3>What you can do:</h3>
-              <div class="feature">🏘️ Browse thousands of property listings</div>
-              <div class="feature">📅 Schedule property viewings</div>
-              <div class="feature">🔔 Set up alerts for new properties</div>
-              <div class="feature">💬 Connect directly with agents</div>
-              <div class="feature">🤝 Find shared properties with 2-to-Tango</div>
+              ${content.features}
+              
+              ${'extraNote' in content ? content.extraNote : ''}
               
               <div style="text-align: center;">
-                <a href="${loginUrl}" class="button">Start Exploring</a>
+                <a href="${content.ctaUrl}" class="button">${content.ctaText}</a>
               </div>
               
               <p>If you have any questions, feel free to reach out to us:</p>
@@ -249,13 +317,13 @@ export class EmailService {
     const mailOptions = {
       from: `"House Me" <${fromEmail}>`,
       to: email,
-      subject: `Welcome to House Me, ${name}! 🏠`,
+      subject: content.subject,
       html: emailBody,
     };
 
     try {
       const info = await this.transporter.sendMail(mailOptions);
-      this.logger.log(`Welcome email sent to: ${email} (MessageId: ${info.messageId})`);
+      this.logger.log(`Welcome email (${role}) sent to: ${email} (MessageId: ${info.messageId})`);
       return { success: true, messageId: info.messageId };
     } catch (error: any) {
       this.logger.error(`Failed to send welcome email to ${email}:`, error);
@@ -452,6 +520,519 @@ export class EmailService {
       return { success: true, messageId: info.messageId };
     } catch (error: any) {
       this.logger.error(`Failed to send verification email to ${email}:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async sendSlotBookingEmail(
+    tenantEmail: string,
+    tenantName: string,
+    agentEmail: string,
+    agentName: string,
+    propertyTitle: string,
+    propertyLocation: string,
+    slotsRemaining: number,
+    totalSlots: number,
+  ) {
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const propertyUrl = `${this.frontendUrl}`;
+
+    // Email to tenant
+    const tenantEmailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #8b5cf6; }
+            .button { display: inline-block; padding: 12px 30px; background: #8b5cf6; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+            .slots { background: #f0fdf4; padding: 15px; border-radius: 8px; text-align: center; margin: 15px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🏠 Slot Booked Successfully!</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${tenantName},</p>
+              <p>Great news! You have successfully booked a slot in a shared property.</p>
+              
+              <div class="details">
+                <h3>Property Details:</h3>
+                <p><strong>Property:</strong> ${propertyTitle}</p>
+                <p><strong>Location:</strong> ${propertyLocation}</p>
+                <p><strong>Agent/Landlord:</strong> ${agentName}</p>
+              </div>
+              
+              <div class="slots">
+                <strong>Slots Status:</strong> ${totalSlots - slotsRemaining}/${totalSlots} slots booked
+              </div>
+              
+              <p><strong>What's Next?</strong></p>
+              <ul>
+                <li>Schedule a viewing with the agent</li>
+                <li>View your co-tenants' profiles once they book</li>
+                <li>Connect with potential roommates</li>
+              </ul>
+              
+              <div style="text-align: center;">
+                <a href="${propertyUrl}" class="button">View Property</a>
+              </div>
+              
+              <p>Need help? Contact us:</p>
+              <p>📧 Email: housemedream@gmail.com</p>
+              <p>📱 WhatsApp: +234 915 208 7229</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>2-to-Tango Shared Living</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    // Email to agent/landlord
+    const agentEmailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #16a34a; }
+            .button { display: inline-block; padding: 12px 30px; background: #16a34a; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+            .slots { background: #fef3c7; padding: 15px; border-radius: 8px; text-align: center; margin: 15px 0; }
+            .alert { background: #fee2e2; padding: 15px; border-radius: 8px; text-align: center; margin: 15px 0; border: 1px solid #ef4444; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🎉 New Slot Booking!</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${agentName},</p>
+              <p>Someone has just booked a slot in your shared property!</p>
+              
+              <div class="details">
+                <h3>Booking Details:</h3>
+                <p><strong>Property:</strong> ${propertyTitle}</p>
+                <p><strong>Tenant Name:</strong> ${tenantName}</p>
+                <p><strong>Tenant Email:</strong> ${tenantEmail}</p>
+              </div>
+              
+              ${slotsRemaining === 0 ? `
+                <div class="alert">
+                  <strong>⚠️ Property Fully Booked!</strong><br>
+                  All ${totalSlots} slots have been filled.
+                </div>
+              ` : `
+                <div class="slots">
+                  <strong>Remaining Slots:</strong> ${slotsRemaining} of ${totalSlots}
+                </div>
+              `}
+              
+              <p>You can now contact the tenant to schedule a viewing or discuss next steps.</p>
+              
+              <div style="text-align: center;">
+                <a href="${this.frontendUrl}/dashboard" class="button">Go to Dashboard</a>
+              </div>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const results: { tenant?: any; agent?: any } = {};
+
+    if (!this.transporter) {
+      this.logger.warn(`Email sending is disabled. Would send slot booking emails`);
+      return { success: false };
+    }
+
+    // Send to tenant
+    try {
+      const tenantInfo = await this.transporter.sendMail({
+        from: `"House Me" <${fromEmail}>`,
+        to: tenantEmail,
+        subject: `✅ Slot Booked - ${propertyTitle}`,
+        html: tenantEmailBody,
+      });
+      this.logger.log(`Slot booking email sent to tenant: ${tenantEmail}`);
+      results.tenant = { success: true, messageId: tenantInfo.messageId };
+    } catch (error: any) {
+      this.logger.error(`Failed to send slot booking email to tenant:`, error);
+      results.tenant = { success: false, error: error.message };
+    }
+
+    // Send to agent/landlord
+    try {
+      const agentInfo = await this.transporter.sendMail({
+        from: `"House Me" <${fromEmail}>`,
+        to: agentEmail,
+        subject: `🎉 New Slot Booking - ${propertyTitle}`,
+        html: agentEmailBody,
+      });
+      this.logger.log(`Slot booking email sent to agent: ${agentEmail}`);
+      results.agent = { success: true, messageId: agentInfo.messageId };
+    } catch (error: any) {
+      this.logger.error(`Failed to send slot booking email to agent:`, error);
+      results.agent = { success: false, error: error.message };
+    }
+
+    return results;
+  }
+
+  async sendViewingScheduledEmail(
+    userEmail: string,
+    userName: string,
+    agentEmail: string,
+    agentName: string,
+    propertyTitle: string,
+    propertyLocation: string,
+    scheduledDate: string,
+    scheduledTime: string,
+  ) {
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    // Email to user who scheduled viewing
+    const userEmailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>📅 Viewing Request Submitted!</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${userName},</p>
+              <p>Your viewing request has been submitted successfully. The agent will review and confirm shortly.</p>
+              
+              <div class="details">
+                <h3>Viewing Details:</h3>
+                <p><strong>Property:</strong> ${propertyTitle}</p>
+                <p><strong>Location:</strong> ${propertyLocation}</p>
+                <p><strong>Date:</strong> ${scheduledDate}</p>
+                <p><strong>Time:</strong> ${scheduledTime}</p>
+                <p><strong>Agent:</strong> ${agentName}</p>
+              </div>
+              
+              <p>You will receive another email once the agent confirms your viewing.</p>
+              
+              <p>Need help? Contact us:</p>
+              <p>📧 Email: housemedream@gmail.com</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    // Email to agent
+    const agentEmailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #16a34a; }
+            .button { display: inline-block; padding: 12px 30px; background: #16a34a; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>📅 New Viewing Request!</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${agentName},</p>
+              <p>You have received a new property viewing request!</p>
+              
+              <div class="details">
+                <h3>Request Details:</h3>
+                <p><strong>Property:</strong> ${propertyTitle}</p>
+                <p><strong>Location:</strong> ${propertyLocation}</p>
+                <p><strong>Requested Date:</strong> ${scheduledDate}</p>
+                <p><strong>Requested Time:</strong> ${scheduledTime}</p>
+                <p><strong>Client Name:</strong> ${userName}</p>
+                <p><strong>Client Email:</strong> ${userEmail}</p>
+              </div>
+              
+              <p>Please log in to your dashboard to confirm or reschedule this viewing.</p>
+              
+              <div style="text-align: center;">
+                <a href="${this.frontendUrl}/dashboard" class="button">Go to Dashboard</a>
+              </div>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const results: { user?: any; agent?: any } = {};
+
+    if (!this.transporter) {
+      this.logger.warn(`Email sending is disabled. Would send viewing scheduled emails`);
+      return { success: false };
+    }
+
+    // Send to user
+    try {
+      const userInfo = await this.transporter.sendMail({
+        from: `"House Me" <${fromEmail}>`,
+        to: userEmail,
+        subject: `📅 Viewing Request Submitted - ${propertyTitle}`,
+        html: userEmailBody,
+      });
+      this.logger.log(`Viewing scheduled email sent to user: ${userEmail}`);
+      results.user = { success: true, messageId: userInfo.messageId };
+    } catch (error: any) {
+      this.logger.error(`Failed to send viewing scheduled email to user:`, error);
+      results.user = { success: false, error: error.message };
+    }
+
+    // Send to agent
+    try {
+      const agentInfo = await this.transporter.sendMail({
+        from: `"House Me" <${fromEmail}>`,
+        to: agentEmail,
+        subject: `📅 New Viewing Request - ${propertyTitle}`,
+        html: agentEmailBody,
+      });
+      this.logger.log(`Viewing scheduled email sent to agent: ${agentEmail}`);
+      results.agent = { success: true, messageId: agentInfo.messageId };
+    } catch (error: any) {
+      this.logger.error(`Failed to send viewing scheduled email to agent:`, error);
+      results.agent = { success: false, error: error.message };
+    }
+
+    return results;
+  }
+
+  async sendCoTenantNotificationEmail(
+    existingTenantEmail: string,
+    existingTenantName: string,
+    newTenantName: string,
+    propertyTitle: string,
+    propertyLocation: string,
+    slotsRemaining: number,
+    totalSlots: number,
+  ) {
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const emailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #8b5cf6; }
+            .button { display: inline-block; padding: 12px 30px; background: #8b5cf6; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+            .slots { background: #f0fdf4; padding: 15px; border-radius: 8px; text-align: center; margin: 15px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>👋 New Co-Tenant Alert!</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${existingTenantName},</p>
+              <p>Good news! Someone new has booked a slot in your shared property.</p>
+              
+              <div class="details">
+                <h3>Property Details:</h3>
+                <p><strong>Property:</strong> ${propertyTitle}</p>
+                <p><strong>Location:</strong> ${propertyLocation}</p>
+                <p><strong>New Co-Tenant:</strong> ${newTenantName}</p>
+              </div>
+              
+              <div class="slots">
+                <strong>Slots Status:</strong> ${totalSlots - slotsRemaining}/${totalSlots} slots booked
+              </div>
+              
+              <p>You can now view their profile and connect with them through the property page.</p>
+              
+              <div style="text-align: center;">
+                <a href="${this.frontendUrl}" class="button">View Co-Tenants</a>
+              </div>
+              
+              <p>Need help? Contact us:</p>
+              <p>📧 Email: housemedream@gmail.com</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>2-to-Tango Shared Living</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (!this.transporter) {
+      this.logger.warn(`Email sending is disabled. Would send co-tenant notification to: ${existingTenantEmail}`);
+      return { success: false };
+    }
+
+    try {
+      const info = await this.transporter.sendMail({
+        from: `"House Me" <${fromEmail}>`,
+        to: existingTenantEmail,
+        subject: `👋 New Co-Tenant - ${propertyTitle}`,
+        html: emailBody,
+      });
+      this.logger.log(`Co-tenant notification sent to: ${existingTenantEmail}`);
+      return { success: true, messageId: info.messageId };
+    } catch (error: any) {
+      this.logger.error(`Failed to send co-tenant notification:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async sendVerificationReminderEmail(email: string, name: string) {
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const dashboardUrl = `${this.frontendUrl}/dashboard`;
+
+    const emailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .alert { background: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b; }
+            .button { display: inline-block; padding: 12px 30px; background: #f59e0b; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+            .benefits { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>⚠️ Complete Your Verification</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${name},</p>
+              
+              <div class="alert">
+                <p><strong>Your account is not yet verified!</strong></p>
+                <p>To start listing properties on House Me, you need to complete the verification process.</p>
+              </div>
+              
+              <div class="benefits">
+                <h3>Benefits of Verification:</h3>
+                <ul>
+                  <li>✅ List unlimited properties</li>
+                  <li>✅ Verified badge on your profile</li>
+                  <li>✅ Higher visibility in search results</li>
+                  <li>✅ Increased trust from potential clients</li>
+                  <li>✅ Access to premium features</li>
+                </ul>
+              </div>
+              
+              <p>The verification process is simple:</p>
+              <ol>
+                <li>Log in to your dashboard</li>
+                <li>Upload a valid ID (NIN or Driver's License)</li>
+                <li>Take a selfie for verification</li>
+                <li>Wait for admin approval (usually within 24 hours)</li>
+              </ol>
+              
+              <div style="text-align: center;">
+                <a href="${dashboardUrl}" class="button">Complete Verification Now</a>
+              </div>
+              
+              <p>Need help? Contact us:</p>
+              <p>📧 Email: housemedream@gmail.com</p>
+              <p>📱 WhatsApp: +234 915 208 7229</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (!this.transporter) {
+      this.logger.warn(`Email sending is disabled. Would send verification reminder to: ${email}`);
+      return { success: false };
+    }
+
+    try {
+      const info = await this.transporter.sendMail({
+        from: `"House Me" <${fromEmail}>`,
+        to: email,
+        subject: `⚠️ Complete Your Verification - House Me`,
+        html: emailBody,
+      });
+      this.logger.log(`Verification reminder sent to: ${email}`);
+      return { success: true, messageId: info.messageId };
+    } catch (error: any) {
+      this.logger.error(`Failed to send verification reminder:`, error);
       return { success: false, error: error.message };
     }
   }

@@ -34,9 +34,10 @@ export class AuthService {
 
     const user = await this.usersService.create(payload);
 
-    // Send welcome email (don't fail registration if email fails)
+    // Send role-specific welcome email (don't fail registration if email fails)
     try {
-      await this.emailService.sendWelcomeEmail(user.email, user.name);
+      const role = user.role === 'agent' ? 'agent' : user.role === 'landlord' ? 'landlord' : 'user';
+      await this.emailService.sendWelcomeEmail(user.email, user.name, role);
     } catch (error) {
       console.error('Failed to send welcome email:', error);
     }

@@ -38,6 +38,28 @@ export class Viewing {
 
   @Prop({ default: false })
   deleted?: boolean;
+
+  // Payment and receipt fields
+  @Prop({ type: Number, min: 0 })
+  viewingFee?: number; // Fee amount in Naira
+
+  @Prop({ default: 'unpaid' })
+  paymentStatus?: string; // unpaid, pending, paid, failed
+
+  @Prop()
+  paymentReference?: string; // Flutterwave transaction reference
+
+  @Prop()
+  receiptUrl?: string; // URL to uploaded receipt image
+
+  @Prop({ type: Number, min: 0 })
+  amountPaid?: number; // Amount paid (after platform fee deduction)
+
+  @Prop({ type: Number, min: 0 })
+  platformFee?: number; // Platform fee percentage applied
+
+  @Prop({ type: Number, min: 0 })
+  agentAmount?: number; // Amount to be disbursed to agent
 }
 
 export const ViewingSchema = SchemaFactory.createForClass(Viewing);

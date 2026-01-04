@@ -79,6 +79,10 @@ export class House {
 
   @Prop({ type: [{ type: Types.ObjectId, ref: 'User' }], default: [] })
   bookedByUsers?: Types.ObjectId[];
+
+  // Viewing/Tour fee in Naira
+  @Prop({ type: Number, min: 0, default: 0 })
+  viewingFee?: number;
 }
 
 export type HouseDocument = HydratedDocument<House>;

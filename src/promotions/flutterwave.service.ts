@@ -100,5 +100,76 @@ export class FlutterwaveService {
 
     return hash === signature;
   }
+
+  async initiateTransfer(data: {
+    account_bank: string; // Bank code
+    account_number: string;
+    amount: number;
+    narration: string;
+    currency?: string;
+    beneficiary_name?: string;
+    reference?: string;
+  }) {
+    try {
+      const response = await axios.post(
+        `${this.baseUrl}/transfers`,
+        {
+          account_bank: data.account_bank,
+          account_number: data.account_number,
+          amount: data.amount,
+          narration: data.narration,
+          currency: data.currency || 'NGN',
+          beneficiary_name: data.beneficiary_name,
+          reference: data.reference || `TRF-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${this.secretKey}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+
+      return {
+        success: true,
+        transferId: response.data.data.id,
+        reference: response.data.data.reference,
+        status: response.data.data.status,
+        amount: response.data.data.amount,
+      };
+    } catch (error: any) {
+      this.logger.error('Flutterwave transfer initiation error:', error.response?.data || error.message);
+      throw new Error(`Failed to initiate transfer: ${error.response?.data?.message || error.message}`);
+    }
+  }
+
+  async verifyTransfer(transferId: string) {
+    try {
+      const response = await axios.get(
+        `${this.baseUrl}/transfers/${transferId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${this.secretKey}`,
+          },
+        },
+      );
+
+      const transfer = response.data.data;
+      return {
+        success: transfer.status === 'SUCCESSFUL',
+        status: transfer.status,
+        amount: transfer.amount,
+        reference: transfer.reference,
+        complete_message: transfer.complete_message,
+        created_at: transfer.created_at,
+      };
+    } catch (error: any) {
+      this.logger.error('Flutterwave transfer verification error:', error.response?.data || error.message);
+      return {
+        success: false,
+        error: error.response?.data?.message || 'Transfer verification failed',
+      };
+    }
+  }
 }
 

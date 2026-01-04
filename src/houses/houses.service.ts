@@ -14,6 +14,7 @@ import { FilterHousesDto } from './dto/filter-houses.dto';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/schemas/user.schema';
 import { AlertsService } from '../alerts/alerts.service';
+import { EmailService } from '../auth/email.service';
 
 @Injectable()
 export class HousesService {
@@ -23,6 +24,8 @@ export class HousesService {
     @Inject(forwardRef(() => UsersService))
     private readonly usersService: UsersService,
     private readonly alertsService: AlertsService,
+    @Inject(forwardRef(() => EmailService))
+    private readonly emailService: EmailService,
   ) {}
 
   async create(agentId: string, dto: CreateHouseDto) {
@@ -362,7 +365,10 @@ export class HousesService {
   }
 
   async bookSlot(houseId: string, userId: string) {
-    const house = await this.houseModel.findById(new Types.ObjectId(houseId)).exec();
+    const house = await this.houseModel
+      .findById(new Types.ObjectId(houseId))
+      .populate('agentId', 'name email phone')
+      .exec();
     
     if (!house) {
       throw new NotFoundException('House not found');
@@ -383,6 +389,17 @@ export class HousesService {
       throw new ForbiddenException('You have already booked a slot in this property');
     }
 
+    // Get user info for email
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Get other users who already booked (before adding the new user)
+    const otherBookedUserIds = (house.bookedByUsers || [])
+      .filter((id: Types.ObjectId) => id.toString() !== userId.toString())
+      .map((id: Types.ObjectId) => id.toString());
+
     // Add user to bookedByUsers and decrement availableSlots
     await this.houseModel.findByIdAndUpdate(
       new Types.ObjectId(houseId),
@@ -393,11 +410,62 @@ export class HousesService {
     ).exec();
 
     const updatedHouse = await this.houseModel.findById(new Types.ObjectId(houseId)).exec();
+    const slotsRemaining = updatedHouse?.availableSlots || 0;
+
+    // Send slot booking email notifications
+    const agent = house.agentId as any;
+    if (agent?.email && user.email) {
+      try {
+        await this.emailService.sendSlotBookingEmail(
+          user.email,
+          user.name,
+          agent.email,
+          agent.name,
+          house.title,
+          house.location,
+          slotsRemaining,
+          house.totalSlots || 1,
+        );
+      } catch (error) {
+        // Log error but don't fail the booking
+        console.error('Failed to send slot booking email:', error);
+      }
+    }
+
+    // Notify other users who already booked a slot
+    if (otherBookedUserIds.length > 0) {
+      try {
+        const otherUsers = await Promise.all(
+          otherBookedUserIds.map((id: string) => this.usersService.findById(id))
+        );
+
+        const validUsers = otherUsers.filter((u) => u && u.email) as Array<{ email: string; name: string }>;
+
+        const notificationPromises = validUsers.map((existingUser) =>
+          this.emailService.sendCoTenantNotificationEmail(
+            existingUser.email,
+            existingUser.name,
+            user.name,
+            house.title,
+            house.location,
+            slotsRemaining,
+            house.totalSlots || 1,
+          ).catch((error) => {
+            console.error(`Failed to notify co-tenant ${existingUser.email}:`, error);
+          })
+        );
+
+        await Promise.all(notificationPromises);
+      } catch (error) {
+        // Log error but don't fail the booking
+        console.error('Failed to send co-tenant notifications:', error);
+      }
+    }
     
     return {
       success: true,
       message: 'Slot booked successfully',
-      availableSlots: updatedHouse?.availableSlots || 0,
+      availableSlots: slotsRemaining,
     };
   }
 

@@ -26,7 +26,6 @@ export class Promotion {
     type: MongooseSchema.Types.ObjectId,
     ref: User.name,
     required: true,
-    index: true,
   })
   userId: Types.ObjectId;
 

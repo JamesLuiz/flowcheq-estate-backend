@@ -102,5 +102,11 @@ export class CreateHouseDto {
   @IsOptional()
   @Type(() => Number)
   totalSlots?: number;
+
+  @ApiProperty({ example: 5000, required: false, description: 'Viewing/Tour fee in Naira' })
+  @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
+  viewingFee?: number;
 }
 

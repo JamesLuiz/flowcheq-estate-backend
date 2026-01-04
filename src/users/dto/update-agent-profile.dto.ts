@@ -1,5 +1,24 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength, IsNumber, ValidateNested } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+
+class BankAccountDto {
+  @ApiProperty({ example: 'First Bank', required: true })
+  @IsString()
+  bankName: string;
+
+  @ApiProperty({ example: '1234567890', required: true })
+  @IsString()
+  accountNumber: string;
+
+  @ApiProperty({ example: 'John Doe', required: true })
+  @IsString()
+  accountName: string;
+
+  @ApiProperty({ example: '011', required: true })
+  @IsString()
+  bankCode: string;
+}
 
 export class UpdateAgentProfileDto {
   @ApiProperty({ example: 'Eliezer James', required: false })
@@ -41,5 +60,11 @@ export class UpdateAgentProfileDto {
   @IsString()
   @IsOptional()
   personaInquiryId?: string;
+
+  @ApiProperty({ type: BankAccountDto, required: false })
+  @ValidateNested()
+  @Type(() => BankAccountDto)
+  @IsOptional()
+  bankAccount?: BankAccountDto;
 }
 

@@ -62,6 +62,42 @@ export class UsersService {
     return this.toSafeUser(updated);
   }
 
+  async addToWalletBalance(userId: string, amount: number) {
+    const user = await this.userModel.findById(userId).exec();
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const currentBalance = (user as any).walletBalance || 0;
+    const newBalance = currentBalance + amount;
+
+    await this.userModel.findByIdAndUpdate(userId, {
+      $set: { walletBalance: newBalance },
+    }).exec();
+
+    return newBalance;
+  }
+
+  async deductFromWalletBalance(userId: string, amount: number) {
+    const user = await this.userModel.findById(userId).exec();
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const currentBalance = (user as any).walletBalance || 0;
+    if (currentBalance < amount) {
+      throw new Error('Insufficient wallet balance');
+    }
+
+    const newBalance = currentBalance - amount;
+
+    await this.userModel.findByIdAndUpdate(userId, {
+      $set: { walletBalance: newBalance },
+    }).exec();
+
+    return newBalance;
+  }
+
   async findAgents(
     filter: FilterQuery<UserDocument> = {},
     options: { limit?: number } = {},

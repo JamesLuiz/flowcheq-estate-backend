@@ -12,6 +12,7 @@ import { AdminModule } from './admin/admin.module';
 import { VerificationsModule } from './verifications/verifications.module';
 import { PromotionsModule } from './promotions/promotions.module';
 import { ViewingsModule } from './viewings/viewings.module';
+import { MessagesModule } from './messages/messages.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { ViewingsModule } from './viewings/viewings.module';
     VerificationsModule,
     PromotionsModule,
     ViewingsModule,
+    MessagesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

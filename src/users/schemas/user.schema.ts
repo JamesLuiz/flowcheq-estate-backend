@@ -56,6 +56,19 @@ export class User {
 
   @Prop()
   verificationDate?: Date;
+
+  // Bank Account Details for Flutterwave
+  @Prop({ type: Object })
+  bankAccount?: {
+    bankName: string;
+    accountNumber: string;
+    accountName: string;
+    bankCode: string;
+  };
+
+  // Wallet/Earnings balance
+  @Prop({ type: Number, default: 0 })
+  walletBalance?: number;
 }
 
 export type UserDocument = HydratedDocument<User>;

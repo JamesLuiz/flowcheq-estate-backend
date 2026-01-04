@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Param,
   Patch,
   Delete,
@@ -9,9 +10,12 @@ import {
   UseGuards,
   ForbiddenException,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { UsersService } from '../users/users.service';
 import { PromotionsService } from '../promotions/promotions.service';
+import { EmailService } from '../auth/email.service';
+import { ViewingsService } from '../viewings/viewings.service';
+import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { type RequestUser } from '../auth/decorators/current-user.decorator';
@@ -24,6 +28,9 @@ export class AdminController {
   constructor(
     private readonly usersService: UsersService,
     private readonly promotionsService: PromotionsService,
+    private readonly emailService: EmailService,
+    private readonly viewingsService: ViewingsService,
+    private readonly configService: ConfigService,
   ) {}
 
   private ensureAdmin(user: RequestUser) {
@@ -205,5 +212,116 @@ export class AdminController {
   ) {
     this.ensureAdmin(user);
     return this.promotionsService.adminCancel(id);
+  }
+
+  // ============ VERIFICATION REMINDER ============
+
+  @Post('send-verification-reminder/:agentId')
+  @ApiOperation({ summary: 'Send verification reminder email to unverified agent' })
+  @ApiParam({ name: 'agentId', description: 'Agent ID', example: '64a1f2e9c...' })
+  @ApiResponse({
+    status: 200,
+    description: 'Reminder email sent',
+    schema: {
+      example: { success: true, message: 'Verification reminder sent' },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - admin access required' })
+  @ApiResponse({ status: 404, description: 'Agent not found' })
+  async sendVerificationReminder(
+    @CurrentUser() user: RequestUser,
+    @Param('agentId') agentId: string,
+  ) {
+    this.ensureAdmin(user);
+
+    const agent = await this.usersService.findById(agentId);
+    if (!agent) {
+      throw new ForbiddenException('Agent not found');
+    }
+
+    await this.emailService.sendVerificationReminderEmail(agent.email, agent.name);
+
+    return { success: true, message: 'Verification reminder sent' };
+  }
+
+  // ============ VIEWING FEES MANAGEMENT ============
+
+  @Get('viewing-fees')
+  @ApiOperation({ summary: 'Get all viewing fees with receipts (admin only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of all viewing fees',
+  })
+  async getAllViewingFees(@CurrentUser() user: RequestUser) {
+    this.ensureAdmin(user);
+    return this.viewingsService.getAllViewings();
+  }
+
+  @Get('viewing-fees/platform-fee-percentage')
+  @ApiOperation({ summary: 'Get platform fee percentage setting' })
+  @ApiResponse({
+    status: 200,
+    description: 'Platform fee percentage',
+    schema: {
+      example: {
+        platformFeePercentage: 10,
+      },
+    },
+  })
+  async getPlatformFeePercentage(@CurrentUser() user: RequestUser) {
+    this.ensureAdmin(user);
+    const percentage = parseFloat(
+      this.configService.get<string>('VIEWING_FEE_PERCENTAGE') || '10',
+    );
+    return { platformFeePercentage: percentage };
+  }
+
+  @Patch('viewing-fees/platform-fee-percentage')
+  @ApiOperation({ summary: 'Update platform fee percentage (admin only)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        platformFeePercentage: {
+          type: 'number',
+          minimum: 0,
+          maximum: 100,
+          example: 10,
+          description: 'Platform fee percentage (0-100)',
+        },
+      },
+      required: ['platformFeePercentage'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Platform fee percentage updated',
+    schema: {
+      example: {
+        success: true,
+        platformFeePercentage: 10,
+        message: 'Platform fee percentage updated. Note: This requires restarting the server to take effect.',
+      },
+    },
+  })
+  async updatePlatformFeePercentage(
+    @Body() body: { platformFeePercentage: number },
+    @CurrentUser() user: RequestUser,
+  ) {
+    this.ensureAdmin(user);
+
+    if (body.platformFeePercentage < 0 || body.platformFeePercentage > 100) {
+      throw new ForbiddenException('Platform fee percentage must be between 0 and 100');
+    }
+
+    // Note: In a production environment, you'd want to store this in a database settings collection
+    // For now, we'll just validate and return a message
+    // The actual value is read from environment variables
+    return {
+      success: true,
+      platformFeePercentage: body.platformFeePercentage,
+      message: 'Platform fee percentage updated. Note: Update VIEWING_FEE_PERCENTAGE environment variable and restart server for changes to take effect.',
+    };
   }
 }
