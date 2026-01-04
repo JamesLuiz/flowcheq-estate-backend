@@ -6,6 +6,7 @@ import { FlutterwaveService } from './flutterwave.service';
 import { Promotion, PromotionSchema } from './schemas/promotion.schema';
 import { HousesModule } from '../houses/houses.module';
 import { UsersModule } from '../users/users.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { UsersModule } from '../users/users.module';
     ]),
     forwardRef(() => HousesModule),
     forwardRef(() => UsersModule),
+    forwardRef(() => AuthModule),
   ],
   controllers: [PromotionsController],
   providers: [PromotionsService, FlutterwaveService],

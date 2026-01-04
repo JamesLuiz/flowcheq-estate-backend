@@ -23,14 +23,21 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { type RequestUser } from '../auth/decorators/current-user.decorator';
 import { CloudinaryService } from '../houses/cloudinary.service';
+import { EmailService } from '../auth/email.service';
+import { Inject, forwardRef } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 
 @Controller('promotions')
 @ApiTags('Promotions')
 export class PromotionsController {
+  private readonly logger = new Logger(PromotionsController.name);
+
   constructor(
     private readonly promotionsService: PromotionsService,
     private readonly cloudinaryService: CloudinaryService,
     private readonly flutterwaveService: FlutterwaveService,
+    @Inject(forwardRef(() => EmailService))
+    private readonly emailService: EmailService,
   ) {}
 
   @Get('active')
@@ -230,6 +237,30 @@ export class PromotionsController {
     
     // Activate promotion
     await this.promotionsService.activate(promotion.id);
+
+    // Send email notifications
+    try {
+      const promotionDetails = await this.promotionsService.findOne(promotion.id);
+      const house = promotionDetails.houseId as any;
+      const agent = promotionDetails.userId as any;
+
+      if (agent?.email) {
+        const endDate = new Date(body.startDate);
+        endDate.setDate(endDate.getDate() + body.days);
+
+        await this.emailService.sendPromotionPaymentConfirmationEmail(
+          agent.email,
+          agent.name || 'Agent',
+          verification.amount,
+          house?.title || 'Property',
+          body.days,
+          body.startDate,
+          endDate.toISOString(),
+        );
+      }
+    } catch (error) {
+      this.logger.error('Failed to send promotion payment confirmation email:', error);
+    }
 
     return { success: true, promotion };
   }

@@ -8,6 +8,7 @@ import { UsersModule } from '../users/users.module';
 import { HousesModule } from '../houses/houses.module';
 import { CloudinaryService } from '../houses/cloudinary.service';
 import { PromotionsModule } from '../promotions/promotions.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { PromotionsModule } from '../promotions/promotions.module';
     UsersModule,
     HousesModule,
     forwardRef(() => PromotionsModule),
+    forwardRef(() => AuthModule),
   ],
   controllers: [ViewingsController],
   providers: [ViewingsService, CloudinaryService],

@@ -1377,5 +1377,228 @@ export class EmailService {
       return { success: false, error: error.message };
     }
   }
+
+  async sendViewingPaymentConfirmationEmail(
+    email: string,
+    name: string,
+    amount: number,
+    propertyTitle: string,
+    scheduledDate: string,
+    scheduledTime: string,
+  ) {
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const emailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .info-box { background: white; padding: 20px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #667eea; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>✅ Payment Confirmed</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${name},</p>
+              <p>Your payment for the property viewing has been successfully processed!</p>
+              <div class="info-box">
+                <p><strong>Property:</strong> ${propertyTitle}</p>
+                <p><strong>Amount Paid:</strong> ₦${amount.toLocaleString()}</p>
+                <p><strong>Scheduled Date:</strong> ${new Date(scheduledDate).toLocaleDateString()}</p>
+                <p><strong>Scheduled Time:</strong> ${scheduledTime}</p>
+              </div>
+              <p>Your viewing appointment is confirmed. We look forward to seeing you!</p>
+              <p>If you have any questions, please don't hesitate to contact us.</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (!this.transporter) {
+      this.logger.warn(`Email sending is disabled. Would send payment confirmation to: ${email}`);
+      return { success: false };
+    }
+
+    try {
+      const info = await this.transporter.sendMail({
+        from: `"House Me" <${fromEmail}>`,
+        to: email,
+        subject: '✅ Viewing Payment Confirmed - House Me',
+        html: emailBody,
+      });
+      this.logger.log(`Payment confirmation email sent to: ${email}`);
+      return { success: true, messageId: info.messageId };
+    } catch (error: any) {
+      this.logger.error(`Failed to send payment confirmation email:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async sendViewingPaymentReceivedEmail(
+    email: string,
+    name: string,
+    totalAmount: number,
+    agentAmount: number,
+    platformFee: number,
+    propertyTitle: string,
+    userName: string,
+  ) {
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const emailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .info-box { background: white; padding: 20px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #667eea; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>💰 Payment Received</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${name},</p>
+              <p>Great news! You've received a payment for a property viewing.</p>
+              <div class="info-box">
+                <p><strong>Property:</strong> ${propertyTitle}</p>
+                <p><strong>Viewer:</strong> ${userName}</p>
+                <p><strong>Total Amount:</strong> ₦${totalAmount.toLocaleString()}</p>
+                <p><strong>Your Earnings:</strong> ₦${agentAmount.toLocaleString()}</p>
+                <p><strong>Platform Fee:</strong> ₦${platformFee.toLocaleString()}</p>
+              </div>
+              <p>The amount has been added to your wallet balance and is available for withdrawal.</p>
+              <p>Thank you for using House Me!</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (!this.transporter) {
+      this.logger.warn(`Email sending is disabled. Would send payment received email to: ${email}`);
+      return { success: false };
+    }
+
+    try {
+      const info = await this.transporter.sendMail({
+        from: `"House Me" <${fromEmail}>`,
+        to: email,
+        subject: '💰 Viewing Payment Received - House Me',
+        html: emailBody,
+      });
+      this.logger.log(`Payment received email sent to: ${email}`);
+      return { success: true, messageId: info.messageId };
+    } catch (error: any) {
+      this.logger.error(`Failed to send payment received email:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async sendPromotionPaymentConfirmationEmail(
+    email: string,
+    name: string,
+    amount: number,
+    propertyTitle: string,
+    days: number,
+    startDate: string,
+    endDate: string,
+  ) {
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const emailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .info-box { background: white; padding: 20px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #667eea; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>✅ Promotion Payment Confirmed</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${name},</p>
+              <p>Your payment for property promotion has been successfully processed!</p>
+              <div class="info-box">
+                <p><strong>Property:</strong> ${propertyTitle}</p>
+                <p><strong>Amount Paid:</strong> ₦${amount.toLocaleString()}</p>
+                <p><strong>Promotion Duration:</strong> ${days} day(s)</p>
+                <p><strong>Start Date:</strong> ${new Date(startDate).toLocaleDateString()}</p>
+                <p><strong>End Date:</strong> ${new Date(endDate).toLocaleDateString()}</p>
+              </div>
+              <p>Your property is now being promoted and will appear in featured listings!</p>
+              <p>Thank you for using House Me!</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (!this.transporter) {
+      this.logger.warn(`Email sending is disabled. Would send promotion payment confirmation to: ${email}`);
+      return { success: false };
+    }
+
+    try {
+      const info = await this.transporter.sendMail({
+        from: `"House Me" <${fromEmail}>`,
+        to: email,
+        subject: '✅ Promotion Payment Confirmed - House Me',
+        html: emailBody,
+      });
+      this.logger.log(`Promotion payment confirmation email sent to: ${email}`);
+      return { success: true, messageId: info.messageId };
+    } catch (error: any) {
+      this.logger.error(`Failed to send promotion payment confirmation email:`, error);
+      return { success: false, error: error.message };
+    }
+  }
 }
 

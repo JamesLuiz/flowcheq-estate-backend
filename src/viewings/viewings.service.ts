@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Inject, forwardRef, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Viewing, ViewingDocument } from './schemas/viewing.schema';
@@ -8,9 +8,11 @@ import { HousesService } from '../houses/houses.service';
 import { ConfigService } from '@nestjs/config';
 import { CloudinaryService } from '../houses/cloudinary.service';
 import { FlutterwaveService } from '../promotions/flutterwave.service';
+import { EmailService } from '../auth/email.service';
 
 @Injectable()
 export class ViewingsService {
+  private readonly logger = new Logger(ViewingsService.name);
   constructor(
     @InjectModel(Viewing.name) private viewingModel: Model<ViewingDocument>,
     @InjectModel(Settings.name) private settingsModel: Model<SettingsDocument>,
@@ -20,6 +22,8 @@ export class ViewingsService {
     private cloudinaryService: CloudinaryService,
     @Inject(forwardRef(() => FlutterwaveService))
     private flutterwaveService: FlutterwaveService,
+    @Inject(forwardRef(() => EmailService))
+    private emailService: EmailService,
   ) {}
 
   async schedule(dto: {
@@ -365,7 +369,8 @@ export class ViewingsService {
   async verifyViewingPayment(txRef: string, userId: string) {
     const viewing = await this.viewingModel
       .findOne({ paymentReference: txRef })
-      .populate('agentId')
+      .populate('agentId', 'name email')
+      .populate('userId', 'name email')
       .exec();
 
     if (!viewing) {
@@ -414,6 +419,42 @@ export class ViewingsService {
     const agent = await this.usersService.findById(viewing.agentId.toString());
     if (agent) {
       await this.usersService.addToWalletBalance(viewing.agentId.toString(), agentAmount);
+    }
+
+    // Get house details for email
+    const house = await this.housesService.findOne(viewing.houseId.toString());
+
+    // Send email notifications to user and agent
+    try {
+      const userEmail = (viewing as any).userId?.email || (viewing as any).guestEmail;
+      const userName = (viewing as any).userId?.name || (viewing as any).guestName || 'User';
+      const agentEmail = (viewing as any).agentId?.email;
+      const agentName = (viewing as any).agentId?.name || 'Agent';
+
+      if (userEmail) {
+        await this.emailService.sendViewingPaymentConfirmationEmail(
+          userEmail,
+          userName,
+          viewing.viewingFee!,
+          house?.title || 'Property',
+          viewing.scheduledDate,
+          viewing.scheduledTime,
+        );
+      }
+
+      if (agentEmail) {
+        await this.emailService.sendViewingPaymentReceivedEmail(
+          agentEmail,
+          agentName,
+          viewing.viewingFee!,
+          agentAmount,
+          platformFee,
+          house?.title || 'Property',
+          userName,
+        );
+      }
+    } catch (error) {
+      this.logger.error('Failed to send payment confirmation emails:', error);
     }
 
     return this.toResponse(viewing);

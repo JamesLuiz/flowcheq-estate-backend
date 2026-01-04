@@ -5,12 +5,10 @@ import axios from 'axios';
 @Injectable()
 export class FlutterwaveService {
   private readonly logger = new Logger(FlutterwaveService.name);
-  private readonly publicKey: string;
   private readonly secretKey: string;
   private readonly baseUrl = 'https://api.flutterwave.com/v3';
 
   constructor(private readonly configService: ConfigService) {
-    this.publicKey = this.configService.get<string>('FLUTTERWAVE_PUBLIC_KEY') || '';
     this.secretKey = this.configService.get<string>('FLUTTERWAVE_SECRET_KEY') || '';
   }
 
