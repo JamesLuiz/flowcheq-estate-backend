@@ -251,9 +251,97 @@ export class AdminController {
     return { success: true, message: 'Verification reminder sent' };
   }
 
-  // ============ VIEWING FEES MANAGEMENT ============
+  // ============ PENDING DISBURSEMENTS ============
 
-  @Get('viewing-fees')
+  @Get('disbursements/pending')
+  @ApiOperation({ summary: 'Get pending disbursements for agents without virtual accounts' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of agents with pending disbursements (no virtual account)',
+  })
+  async getPendingDisbursements(@CurrentUser() user: RequestUser) {
+    this.ensureAdmin(user);
+    return this.usersService.getPendingDisbursements();
+  }
+
+  @Post('disbursements/process/:agentId')
+  @ApiOperation({ summary: 'Process manual disbursement to agent bank account' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        amount: { type: 'number', example: 10000, description: 'Amount to disburse' },
+        reason: { type: 'string', example: 'Manual viewing fee disbursement' },
+      },
+      required: ['amount'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Disbursement processed',
+  })
+  async processDisbursement(
+    @CurrentUser() user: RequestUser,
+    @Param('agentId') agentId: string,
+    @Body() body: { amount: number; reason?: string },
+  ) {
+    this.ensureAdmin(user);
+    return this.usersService.processManualDisbursement(agentId, body.amount, body.reason);
+  }
+
+  @Post('disbursements/process-bulk')
+  @ApiOperation({ summary: 'Process bulk disbursements to multiple agents' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        disbursements: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              agentId: { type: 'string' },
+              amount: { type: 'number' },
+            },
+          },
+        },
+        reason: { type: 'string' },
+      },
+    },
+  })
+  async processBulkDisbursements(
+    @CurrentUser() user: RequestUser,
+    @Body() body: { disbursements: { agentId: string; amount: number }[]; reason?: string },
+  ) {
+    this.ensureAdmin(user);
+    
+    const results = {
+      success: 0,
+      failed: 0,
+      errors: [] as string[],
+    };
+    
+    for (const disbursement of body.disbursements) {
+      try {
+        await this.usersService.processManualDisbursement(
+          disbursement.agentId,
+          disbursement.amount,
+          body.reason,
+        );
+        results.success++;
+      } catch (error: any) {
+        results.failed++;
+        results.errors.push(`Agent ${disbursement.agentId}: ${error.message}`);
+      }
+    }
+    
+    return {
+      message: `Processed ${results.success} disbursements. ${results.failed} failed.`,
+      ...results,
+    };
+  }
+
+  // ============ VIEWING FEES MANAGEMENT ============
   @ApiOperation({ summary: 'Get all viewing fees with receipts (admin only)' })
   @ApiResponse({
     status: 200,
@@ -262,6 +350,40 @@ export class AdminController {
   async getAllViewingFees(@CurrentUser() user: RequestUser) {
     this.ensureAdmin(user);
     return this.viewingsService.getAllViewings();
+  }
+
+  @Get('stats')
+  @ApiOperation({ summary: 'Get admin dashboard stats (agents, revenue, promotions, viewings)' })
+  @ApiResponse({ status: 200, description: 'Admin stats' })
+  async getStats(@CurrentUser() user: RequestUser) {
+    this.ensureAdmin(user);
+
+    // Agents counts
+    const allAgents = await this.usersService.findAgents({}, {});
+    const totalAgents = allAgents.length;
+    const verifiedAgents = (await this.usersService.findAgents({ verified: true }, {})).length;
+
+    // Promotions revenue: include active and expired promotions (they were paid)
+    const allPromotions = await this.promotionsService.findAll();
+    const totalPromotionRevenue = allPromotions
+      .filter((p: any) => p.status === 'active' || p.status === 'expired')
+      .reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+
+    // Viewing platform revenue: sum platform share across paid viewings
+    const allViewings = await this.viewingsService.getAllViewings();
+    const totalViewingPlatformRevenue = allViewings
+      .filter((v: any) => v.paymentStatus === 'paid' && typeof v.viewingFee === 'number' && typeof v.platformFee === 'number')
+      .reduce((sum: number, v: any) => sum + ((v.viewingFee || 0) * (v.platformFee || 0) / 100), 0);
+
+    const totalPlatformRevenue = totalPromotionRevenue + totalViewingPlatformRevenue;
+
+    return {
+      totalAgents,
+      verifiedAgents,
+      totalPromotionRevenue,
+      totalViewingPlatformRevenue,
+      totalPlatformRevenue,
+    };
   }
 
   @Get('viewing-fees/platform-fee-percentage')

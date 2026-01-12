@@ -3,6 +3,8 @@ import {
   Injectable,
   NotFoundException,
   UnauthorizedException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -16,6 +18,7 @@ import { UserDocument, UserRole } from '../users/schemas/user.schema';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { EmailService } from './email.service';
+import { FlutterwaveService } from '../promotions/flutterwave.service';
 
 @Injectable()
 export class AuthService {
@@ -23,6 +26,8 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly emailService: EmailService,
+    @Inject(forwardRef(() => FlutterwaveService))
+    private readonly flutterwaveService: FlutterwaveService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -33,6 +38,21 @@ export class AuthService {
     };
 
     const user = await this.usersService.create(payload);
+
+    // Create virtual account for agents and landlords
+    if (user.role === 'agent' || user.role === 'landlord') {
+      try {
+        await this.flutterwaveService.createVirtualAccount({
+          account_name: user.name,
+          email: user.email,
+          mobilenumber: user.phone || '08000000000', // Default phone if not provided
+        });
+        console.log(`Virtual account created for ${user.email}`);
+      } catch (error: any) {
+        // Don't fail registration if virtual account creation fails
+        console.error(`Failed to create virtual account for ${user.email}:`, error.message || error);
+      }
+    }
 
     // Send role-specific welcome email (don't fail registration if email fails)
     try {
@@ -49,13 +69,35 @@ export class AuthService {
     const user = await this.usersService.findByEmail(dto.email);
 
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    // Check if account is banned
+    if (user.accountStatus === 'banned') {
+      throw new UnauthorizedException('Account has been banned. Please contact support.');
+    }
+
+    // Check if account is suspended
+    if (user.accountStatus === 'suspended') {
+      if (user.suspendedUntil && new Date(user.suspendedUntil) > new Date()) {
+        const reason = user.suspensionReason ? ` Reason: ${user.suspensionReason}` : '';
+        throw new UnauthorizedException(
+          `Account is suspended until ${new Date(user.suspendedUntil).toLocaleDateString()}.${reason}`,
+        );
+      } else {
+        // Suspension period has passed, reactivate account
+        await this.usersService.updateAgentProfile(user._id.toString(), {
+          accountStatus: 'active',
+          suspendedUntil: undefined,
+          suspensionReason: undefined,
+        });
+      }
     }
 
     const passwordValid = await bcrypt.compare(dto.password, user.password);
 
     if (!passwordValid) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Invalid email or password');
     }
 
     return this.buildAuthResponse(user);

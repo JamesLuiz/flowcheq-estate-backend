@@ -1,9 +1,12 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { PromotionsController } from './promotions.controller';
+import { FlutterwaveWebhookController } from './flutterwave-webhook.controller';
 import { PromotionsService } from './promotions.service';
 import { FlutterwaveService } from './flutterwave.service';
 import { Promotion, PromotionSchema } from './schemas/promotion.schema';
+import { Wallet, WalletSchema } from '../users/schemas/wallet.schema';
+import { User, UserSchema } from '../users/schemas/user.schema';
 import { HousesModule } from '../houses/houses.module';
 import { UsersModule } from '../users/users.module';
 import { AuthModule } from '../auth/auth.module';
@@ -12,12 +15,14 @@ import { AuthModule } from '../auth/auth.module';
   imports: [
     MongooseModule.forFeature([
       { name: Promotion.name, schema: PromotionSchema },
+      { name: Wallet.name, schema: WalletSchema },
+      { name: User.name, schema: UserSchema },
     ]),
     forwardRef(() => HousesModule),
     forwardRef(() => UsersModule),
     forwardRef(() => AuthModule),
   ],
-  controllers: [PromotionsController],
+  controllers: [PromotionsController, FlutterwaveWebhookController],
   providers: [PromotionsService, FlutterwaveService],
   exports: [PromotionsService, FlutterwaveService],
 })

@@ -70,6 +70,30 @@ export class User {
   @Prop({ type: Number, default: 0 })
   walletBalance?: number;
 
+  // Transaction PIN for withdrawals (hashed)
+  @Prop({ select: false })
+  transactionPin?: string;
+
+  // Transaction PIN reset
+  @Prop({ select: false })
+  transactionPinResetCode?: string;
+
+  @Prop({ select: false })
+  transactionPinResetExpiry?: Date;
+
+  @Prop({ type: Number, default: 0 })
+  transactionPinAttempts?: number; // Track failed PIN attempts
+
+  @Prop()
+  transactionPinLockedUntil?: Date; // Lock PIN after too many attempts
+
+  // Withdrawal OTP
+  @Prop({ select: false })
+  withdrawalOtp?: string;
+
+  @Prop({ select: false })
+  withdrawalOtpExpiry?: Date;
+
   // Account status fields
   @Prop({ default: 'active', enum: ['active', 'suspended', 'banned'], index: true })
   accountStatus?: 'active' | 'suspended' | 'banned';

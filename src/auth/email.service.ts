@@ -944,6 +944,71 @@ export class EmailService {
     }
   }
 
+  async sendTransactionPinResetEmail(email: string, resetCode: string, name?: string) {
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const emailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .code-box { background: #fff; border: 2px dashed #667eea; padding: 20px; text-align: center; margin: 20px 0; border-radius: 5px; }
+            .code { font-size: 32px; font-weight: bold; color: #667eea; letter-spacing: 5px; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Transaction PIN Reset Code</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${name || 'there'},</p>
+              <p>You requested to reset your transaction PIN. Use the code below to reset it:</p>
+              <div class="code-box">
+                <div class="code">${resetCode}</div>
+              </div>
+              <p>This code will expire in 15 minutes.</p>
+              <p>If you didn't request this reset, please ignore this email and contact support if you have concerns.</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (!this.transporter) {
+      this.logger.warn(
+        `Email sending is disabled. Would send transaction PIN reset email to: ${email} with code: ${resetCode}`,
+      );
+      return;
+    }
+
+    try {
+      await this.transporter.sendMail({
+        from: fromEmail,
+        to: email,
+        subject: 'Transaction PIN Reset Code',
+        html: emailBody,
+      });
+      this.logger.log(`Transaction PIN reset email sent to: ${email}`);
+    } catch (error) {
+      this.logger.error(`Failed to send transaction PIN reset email to ${email}:`, error);
+      throw error;
+    }
+  }
+
   async sendVerificationReminderEmail(email: string, name: string, customMessage?: string) {
     const fromEmail =
       this.configService.get<string>('SMTP_FROM') ||
@@ -1598,6 +1663,264 @@ export class EmailService {
     } catch (error: any) {
       this.logger.error(`Failed to send promotion payment confirmation email:`, error);
       return { success: false, error: error.message };
+    }
+  }
+
+  async sendWithdrawalOtpEmail(email: string, otp: string, name?: string) {
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const emailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .code-box { background: #fff; border: 2px dashed #667eea; padding: 20px; text-align: center; margin: 20px 0; border-radius: 5px; }
+            .code { font-size: 32px; font-weight: bold; color: #667eea; letter-spacing: 5px; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+            .warning { background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Withdrawal OTP</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${name || 'there'},</p>
+              <p>You requested to withdraw funds from your wallet. Use the OTP below to complete your withdrawal:</p>
+              <div class="code-box">
+                <div class="code">${otp}</div>
+              </div>
+              <div class="warning">
+                <strong>⚠️ Important:</strong> This OTP will expire in 1 minute and 50 seconds. Do not share this code with anyone.
+              </div>
+              <p>If you didn't request this withdrawal, please ignore this email and contact support immediately.</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (!this.transporter) {
+      this.logger.warn(
+        `Email sending is disabled. Would send withdrawal OTP to: ${email} with code: ${otp}`,
+      );
+      return;
+    }
+
+    try {
+      await this.transporter.sendMail({
+        from: fromEmail,
+        to: email,
+        subject: 'Withdrawal OTP - House Me',
+        html: emailBody,
+      });
+      this.logger.log(`Withdrawal OTP email sent to: ${email}`);
+    } catch (error) {
+      this.logger.error(`Failed to send withdrawal OTP email to ${email}:`, error);
+      throw error;
+    }
+  }
+
+  async sendWithdrawalProcessingEmail(email: string, name: string, amount: number, bankName: string, accountNumber: string) {
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const emailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .info-box { background: white; padding: 20px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #f59e0b; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Withdrawal Processing</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${name},</p>
+              <p>Your withdrawal request for <strong>₦${amount.toLocaleString()}</strong> is being processed.</p>
+              <div class="info-box">
+                <p><strong>Bank:</strong> ${bankName}</p>
+                <p><strong>Account:</strong> ****${accountNumber.slice(-4)}</p>
+              </div>
+              <p>We will notify you once the transfer has been completed.</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (!this.transporter) {
+      this.logger.warn(`Email sending is disabled. Would send withdrawal processing email to: ${email}`);
+      return;
+    }
+
+    try {
+      await this.transporter.sendMail({
+        from: `"House Me" <${fromEmail}>`,
+        to: email,
+        subject: 'Withdrawal Processing - House Me',
+        html: emailBody,
+      });
+      this.logger.log(`Withdrawal processing email sent to: ${email}`);
+    } catch (error) {
+      this.logger.error(`Failed to send withdrawal processing email to ${email}:`, error);
+    }
+  }
+
+  async sendWithdrawalSuccessEmail(email: string, name: string, amount: number, bankName: string, accountNumber: string) {
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const emailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .info-box { background: white; padding: 20px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #16a34a; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>✅ Withdrawal Successful</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${name},</p>
+              <p>Great news! Your withdrawal has been successfully processed.</p>
+              <div class="info-box">
+                <p><strong>Amount:</strong> ₦${amount.toLocaleString()}</p>
+                <p><strong>Bank:</strong> ${bankName}</p>
+                <p><strong>Account:</strong> ****${accountNumber.slice(-4)}</p>
+              </div>
+              <p>The funds should reflect in your account shortly.</p>
+              <p>Thank you for using House Me!</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (!this.transporter) {
+      this.logger.warn(`Email sending is disabled. Would send withdrawal success email to: ${email}`);
+      return;
+    }
+
+    try {
+      await this.transporter.sendMail({
+        from: `"House Me" <${fromEmail}>`,
+        to: email,
+        subject: '✅ Withdrawal Successful - House Me',
+        html: emailBody,
+      });
+      this.logger.log(`Withdrawal success email sent to: ${email}`);
+    } catch (error) {
+      this.logger.error(`Failed to send withdrawal success email to ${email}:`, error);
+    }
+  }
+
+  async sendWithdrawalFailedEmail(email: string, name: string, amount: number, reason: string) {
+    const fromEmail =
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const emailBody = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .info-box { background: white; padding: 20px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #ef4444; }
+            .refund-note { background: #dcfce7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #16a34a; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>❌ Withdrawal Failed</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${name},</p>
+              <p>Unfortunately, your withdrawal request could not be processed.</p>
+              <div class="info-box">
+                <p><strong>Amount:</strong> ₦${amount.toLocaleString()}</p>
+                <p><strong>Reason:</strong> ${reason}</p>
+              </div>
+              <div class="refund-note">
+                <p><strong>💰 Refund:</strong> The amount has been refunded to your wallet balance.</p>
+              </div>
+              <p>Please verify your bank details and try again, or contact support if the issue persists.</p>
+              <p>📧 Email: housemedream@gmail.com</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (!this.transporter) {
+      this.logger.warn(`Email sending is disabled. Would send withdrawal failed email to: ${email}`);
+      return;
+    }
+
+    try {
+      await this.transporter.sendMail({
+        from: `"House Me" <${fromEmail}>`,
+        to: email,
+        subject: '❌ Withdrawal Failed - House Me',
+        html: emailBody,
+      });
+      this.logger.log(`Withdrawal failed email sent to: ${email}`);
+    } catch (error) {
+      this.logger.error(`Failed to send withdrawal failed email to ${email}:`, error);
     }
   }
 }

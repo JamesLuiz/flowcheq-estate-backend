@@ -172,13 +172,15 @@ export class PromotionsController {
     const amount = body.days * PRICE_PER_DAY;
     const txRef = `PROMO-${body.houseId}-${Date.now()}`;
 
+    const apiBase = process.env.API_BASE_URL || 'http://localhost:3000';
     const payment = await this.flutterwaveService.initializePayment({
       amount,
       email: body.email,
       name: body.name,
       phone: body.phone,
       tx_ref: txRef,
-      callback_url: `${process.env.CLIENT_ORIGIN || 'http://localhost:5173'}/promotions/callback?tx_ref=${txRef}`,
+      // Redirect/callback should go to the backend API so server can verify and create promotions
+      callback_url: `${apiBase.replace(/\/$/, '')}/promotions/callback?tx_ref=${txRef}`,
       meta: {
         houseId: body.houseId,
         days: body.days,

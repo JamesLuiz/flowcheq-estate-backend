@@ -27,41 +27,31 @@ async function bootstrap() {
       whitelist: true,
       transform: true,
       forbidNonWhitelisted: true,
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
     }),
   );
 
   // Swagger / OpenAPI setup
-  const config = new DocumentBuilder()
+  const swaggerConfig = new DocumentBuilder()
     .setTitle('House-me API')
-    .setDescription('API documentation for the House-me estate management backend')
+    .setDescription('API documentation for the House-me backend')
     .setVersion('1.0')
-    .addBearerAuth(
-      {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-        description: 'Enter JWT token',
-      },
-      'access-token',
-    )
-    .addTag('Health', 'Health check endpoints')
-    .addTag('Auth', 'Authentication endpoints')
-    .addTag('Houses', 'Property listing endpoints')
-    .addTag('Agents', 'Agent profile endpoints')
-    .addTag('Admin', 'Admin management endpoints')
-    .addTag('Alerts', 'Property alert endpoints')
-    .addTag('Reviews', 'Agent review endpoints')
-    .addTag('Verifications', 'Agent verification endpoints')
-    .addTag('Promotions', 'Property promotion endpoints')
-    .addTag('Viewings', 'Property viewing scheduling endpoints')
+    .addBearerAuth({
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+    }, 'access-token')
     .build();
-  
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document, {
-    swaggerOptions: {
-      persistAuthorization: true,
-    },
+
+  // Limit Swagger scanning to the application module to avoid scanning
+  // internal or unexpected modules that may not expose the expected
+  // 'routes' structure with some @nestjs versions.
+  const document = SwaggerModule.createDocument(app, swaggerConfig, {
+    include: [AppModule],
   });
+  SwaggerModule.setup('api/docs', app, document);
 
   const port = process.env.PORT ? Number(process.env.PORT) : 3000;
   await app.listen(port, '0.0.0.0');

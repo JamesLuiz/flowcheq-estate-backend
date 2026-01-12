@@ -34,6 +34,8 @@ export class ViewingsController {
   @ApiResponse({ status: 400, description: 'Bad request - validation error' })
   @ApiResponse({ status: 404, description: 'House or agent not found' })
   async schedule(@Body() dto: ScheduleViewingDto) {
+    // userId can be passed from frontend if user is logged in
+    // The endpoint is not protected to allow guest scheduling
     return this.viewingsService.schedule(dto);
   }
 
@@ -72,6 +74,16 @@ export class ViewingsController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getMyViewings(@CurrentUser() user: RequestUser) {
     return this.viewingsService.getAgentViewings(user.sub);
+  }
+
+  @Get('user')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Get viewings for authenticated user' })
+  @ApiResponse({ status: 200, description: 'List of viewings for the user' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getUserViewings(@CurrentUser() user: RequestUser) {
+    return this.viewingsService.getUserViewings(user.sub);
   }
 
   @Get('admin/all')
@@ -137,7 +149,7 @@ export class ViewingsController {
     @CurrentUser() user: RequestUser,
   ) {
     const isAdmin = user.role === 'admin';
-    return this.viewingsService.updateStatus(id, user.sub, dto.status, isAdmin);
+    return this.viewingsService.updateStatus(id, user.sub, dto.status, isAdmin, dto.newDate, dto.newTime);
   }
 
   @Post(':id/receipt')

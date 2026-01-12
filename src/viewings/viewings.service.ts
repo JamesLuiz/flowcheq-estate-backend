@@ -177,10 +177,57 @@ export class ViewingsService {
   }
 
   async getAgentViewings(agentId: string) {
+    // Only show viewings that are paid (if they have a viewing fee) or free viewings
+    // Logic: 
+    // - Free viewings: viewingFee doesn't exist, is 0, or is null
+    // - Paid viewings: viewingFee > 0 AND paymentStatus = 'paid'
+    // Unpaid viewings with viewingFee > 0 will NOT be shown
     const viewings = await this.viewingModel
-      .find({ agentId: new Types.ObjectId(agentId), deleted: { $ne: true } })
+      .find({ 
+        agentId: new Types.ObjectId(agentId), 
+        deleted: { $ne: true },
+        $or: [
+          // Free viewings (no fee required)
+          { viewingFee: { $exists: false } },
+          { viewingFee: 0 },
+          { viewingFee: null },
+          // Paid viewings (fee required and payment confirmed)
+          { 
+            viewingFee: { $gt: 0 },
+            paymentStatus: 'paid'
+          },
+        ],
+      })
       .populate('houseId', 'title location images price')
       .populate('userId', 'name email phone')
+      .sort({ createdAt: -1 })
+      .exec();
+
+    return viewings.map(v => this.toResponse(v));
+  }
+
+  async getUserViewings(userId: string) {
+    // Get user to check their email (in case viewings were created with guestEmail)
+    const user = await this.usersService.findById(userId);
+    const userEmail = user?.email?.toLowerCase();
+
+    // Query viewings by userId OR by guestEmail (for logged-in users who scheduled as guests)
+    const query: any = {
+      deleted: { $ne: true },
+      $or: [
+        { userId: new Types.ObjectId(userId) },
+      ],
+    };
+
+    // Also include viewings created with guestEmail if user is logged in
+    if (userEmail) {
+      query.$or.push({ guestEmail: userEmail.toLowerCase() });
+    }
+
+    const viewings = await this.viewingModel
+      .find(query)
+      .populate('houseId', 'title location images price')
+      .populate('agentId', 'name email phone')
       .sort({ createdAt: -1 })
       .exec();
 
@@ -199,7 +246,7 @@ export class ViewingsService {
     return viewings.map(v => this.toResponse(v));
   }
 
-  async updateStatus(viewingId: string, agentId: string, status: string, isAdmin = false) {
+  async updateStatus(viewingId: string, userId: string, status: string, isAdmin = false, newDate?: string, newTime?: string) {
     const viewing = await this.viewingModel
       .findById(viewingId)
       .populate('houseId', 'title location')
@@ -211,8 +258,22 @@ export class ViewingsService {
       throw new NotFoundException('Viewing not found');
     }
 
-    if (!isAdmin && viewing.agentId.toString() !== agentId) {
+    // Check if user is the agent/landlord for this viewing
+    const viewingAgentId = (viewing.agentId as any)?._id?.toString() || viewing.agentId?.toString();
+    const isViewingAgent = viewingAgentId === userId;
+    
+    if (!isAdmin && !isViewingAgent) {
       throw new ForbiddenException('Not authorized to update this viewing');
+    }
+
+    // Handle reschedule
+    if (status === 'rescheduled' && newDate && newTime) {
+      viewing.scheduledDate = newDate;
+      viewing.scheduledTime = newTime;
+      viewing.status = 'pending'; // Reset to pending when rescheduled
+      await viewing.save();
+      await this.sendRescheduleEmail(viewing, newDate, newTime);
+      return this.toResponse(viewing);
     }
 
     viewing.status = status;
@@ -222,6 +283,51 @@ export class ViewingsService {
     await this.sendStatusUpdateEmail(viewing, status);
 
     return this.toResponse(viewing);
+  }
+
+  private async sendRescheduleEmail(viewing: ViewingDocument, newDate: string, newTime: string) {
+    const nodemailer = await import('nodemailer');
+    
+    const transporter = nodemailer.createTransport({
+      host: this.configService.get('SMTP_HOST') || 'smtp.gmail.com',
+      port: parseInt(this.configService.get('SMTP_PORT') || '587'),
+      secure: false,
+      auth: {
+        user: this.configService.get('SMTP_USER'),
+        pass: this.configService.get('SMTP_PASS'),
+      },
+    });
+
+    const house = viewing.houseId as any;
+    const clientEmail = (viewing.userId as any)?.email || viewing.guestEmail;
+    const clientName = (viewing.userId as any)?.name || viewing.guestName;
+    const agentName = (viewing.agentId as any)?.name || 'The agent';
+
+    if (!clientEmail) return;
+
+    const emailContent = `
+      <h2>Viewing Rescheduled</h2>
+      <p>Hi ${clientName || 'there'},</p>
+      <p>${agentName} has rescheduled your property viewing.</p>
+      <h3>${house?.title || 'Property'}</h3>
+      <h4>New Schedule:</h4>
+      <ul>
+        <li><strong>Date:</strong> ${newDate}</li>
+        <li><strong>Time:</strong> ${newTime}</li>
+      </ul>
+      <p>Please confirm this new time works for you or contact the agent to discuss alternatives.</p>
+    `;
+
+    try {
+      await transporter.sendMail({
+        from: this.configService.get('SMTP_FROM') || 'noreply@nestinestate.com',
+        to: clientEmail,
+        subject: `Viewing Rescheduled - ${house?.title || 'Property'}`,
+        html: emailContent,
+      });
+    } catch (error) {
+      console.error('Failed to send reschedule email:', error);
+    }
   }
 
   private async sendStatusUpdateEmail(viewing: ViewingDocument, status: string) {
@@ -338,9 +444,64 @@ export class ViewingsService {
 
     const txRef = `VIEWING-${viewingId}-${Date.now()}`;
     const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
-    const callbackUrl = `${frontendUrl}/viewings/payment/callback?tx_ref=${txRef}`;
+    // Ensure no trailing slash and proper URL encoding
+    const cleanFrontendUrl = frontendUrl.replace(/\/$/, '');
+    const callbackUrl = `${cleanFrontendUrl}/viewings/payment/callback?tx_ref=${encodeURIComponent(txRef)}`;
 
     try {
+      // NEW APPROACH: Use Flutterwave Split Payment Subaccounts
+      // Payment automatically splits: platform keeps commission %, agent gets their share %
+      const agentIdString = agent._id?.toString() || agent.id;
+      
+      // Get platform fee percentage (dynamic from settings)
+      let platformFeePercentage = parseFloat(
+        this.configService.get<string>('VIEWING_FEE_PERCENTAGE') || '10',
+      );
+      try {
+        const settings = await this.settingsModel.findOne({ key: 'platformFeePercentage' });
+        if (settings && typeof settings.value === 'number') {
+          platformFeePercentage = settings.value;
+        }
+      } catch (error) {
+        // If Settings model not available, use env variable
+      }
+
+      // Check if agent has virtual account for split payment
+      // Funds will go to agent's virtual account, then they can withdraw to bank account
+      let subaccounts: any[] = [];
+      
+      // Check if agent has virtual account
+      try {
+        const agentWallet = await this.flutterwaveService.getWalletByUserId(agentIdString);
+        
+        if (agentWallet && agentWallet.accountNumber && agentWallet.bankCode) {
+          // Ensure split payment subaccount exists using virtual account details
+          const splitSubaccountId = await this.flutterwaveService.ensureSplitPaymentSubaccount(agentIdString);
+
+          if (splitSubaccountId) {
+            // Convert platform percentage to decimal (10% = 0.1)
+            const platformCommissionDecimal = platformFeePercentage / 100;
+            
+            subaccounts = [
+              {
+                id: splitSubaccountId, // Split payment subaccount ID (RS_xxx) pointing to virtual account
+                transaction_charge_type: 'percentage' as const,
+                transaction_charge: platformCommissionDecimal, // Platform takes 10%, agent gets 90%
+              },
+            ];
+            this.logger.log(`✓ Split payment configured: Platform takes ${platformFeePercentage}% (${platformCommissionDecimal}), Agent's virtual account ${agentWallet.accountNumber} receives ${100 - platformFeePercentage}%`);
+          } else {
+            this.logger.warn(`⚠ Could not create split payment subaccount for agent ${agentIdString}. Payment will go to platform account.`);
+          }
+        } else {
+          this.logger.warn(`⚠ Agent ${agentIdString} does not have a virtual account. Payment will go to platform account.`);
+        }
+      } catch (error: any) {
+        this.logger.error(`✗ Error setting up split payment for agent ${agentIdString}:`, error.message || error);
+        this.logger.warn('Payment will go to platform account and will need to be transferred manually');
+      }
+
+      // Initialize payment with split payment subaccount (if available)
       const paymentResult = await this.flutterwaveService.initializePayment({
         amount: viewing.viewingFee,
         email: customerEmail,
@@ -353,6 +514,12 @@ export class ViewingsService {
           houseId: house._id?.toString() || house.id,
           agentId: agent._id?.toString() || agent.id,
         },
+        customizations: {
+          title: 'House Me - Viewing Fee Payment',
+          description: `Property viewing fee payment - ${house.title || 'Property'}`,
+          logo: 'https://house-me.vercel.app/logo.png',
+        },
+        subaccounts: subaccounts.length > 0 ? subaccounts : undefined,
       });
 
       // Update viewing with payment reference
@@ -377,8 +544,11 @@ export class ViewingsService {
       throw new NotFoundException('Viewing not found');
     }
 
-    // Verify payment with Flutterwave
-    const verification = await this.flutterwaveService.verifyPayment(txRef);
+    // Verify payment with Flutterwave using tx_ref
+    const verification = await this.flutterwaveService.verifyPaymentByReference(txRef);
+
+  // DEBUG: log verification data to inspect split/subaccount information
+  this.logger.log(`Flutterwave verification data for tx_ref=${txRef}: ${JSON.stringify(verification.data || verification)}`);
 
     if (!verification.success) {
       viewing.paymentStatus = 'failed';
@@ -415,28 +585,122 @@ export class ViewingsService {
     viewing.agentAmount = agentAmount;
     await viewing.save();
 
-    // Add to agent's wallet balance
-    const agent = await this.usersService.findById(viewing.agentId.toString());
+    // NEW APPROACH: 
+    // Payment goes to platform account first (no split at payment time)
+    // Then transfer only agent's share (e.g., 90%) to agent's virtual account
+    // Platform commission (e.g., 10%) stays in platform account - no need to transfer it
+    // Extract agent ID properly (handle both populated and non-populated cases)
+    let agentId: string;
+    let houseId: string;
+    
+    // Check if agentId is populated (object) or just an ObjectId
+    const agentIdValue = viewing.agentId as any;
+    if (agentIdValue && typeof agentIdValue === 'object') {
+      // If it's a populated object, extract _id or id
+      if (agentIdValue._id) {
+        agentId = agentIdValue._id.toString();
+      } else if (agentIdValue.id) {
+        agentId = agentIdValue.id.toString();
+      } else {
+        // If it's an ObjectId directly
+        agentId = agentIdValue.toString();
+      }
+    } else {
+      // If it's already a string or ObjectId
+      agentId = agentIdValue?.toString() || '';
+    }
+    
+    // Check if houseId is populated (object) or just an ObjectId
+    const houseIdValue = viewing.houseId as any;
+    if (houseIdValue && typeof houseIdValue === 'object') {
+      // If it's a populated object, extract _id or id
+      if (houseIdValue._id) {
+        houseId = houseIdValue._id.toString();
+      } else if (houseIdValue.id) {
+        houseId = houseIdValue.id.toString();
+      } else {
+        // If it's an ObjectId directly
+        houseId = houseIdValue.toString();
+      }
+    } else {
+      // If it's already a string or ObjectId
+      houseId = houseIdValue?.toString() || '';
+    }
+    
+    if (!agentId) {
+      throw new Error('Unable to extract agent ID from viewing');
+    }
+    if (!houseId) {
+      throw new Error('Unable to extract house ID from viewing');
+    }
+    
+    const agent = await this.usersService.findById(agentId);
     if (agent) {
-      await this.usersService.addToWalletBalance(viewing.agentId.toString(), agentAmount);
+      const house = await this.housesService.findOne(houseId);
+      const userName = (viewing as any).userId?.name || (viewing as any).guestName || 'Guest';
+      
+      // Check if split payment was used (agent has split payment subaccount)
+      const agentWallet = await this.flutterwaveService.getWalletByUserId(agentId);
+      const usedSplitPayment = agentWallet && agentWallet.subaccountId && agentWallet.subaccountId.startsWith('RS_');
+      
+      if (usedSplitPayment) {
+        // Split payment was configured - funds automatically split at payment time
+        // Agent's share (90%) goes to their virtual account wallet
+        // Platform commission (10%) stays in platform account automatically
+        this.logger.log(`✓ Split payment processed automatically: ₦${agentAmount} (${100 - platformFeePercentage}%) to agent ${agentId} virtual account (${agentWallet.accountNumber}), ₦${platformFee} (${platformFeePercentage}%) to platform.`);
+        
+        // Sync balance from Flutterwave virtual account (funds should be there now)
+        try {
+          const balanceData = await this.flutterwaveService.getAvailableBalance(agentId);
+          const actualBalance = balanceData.data?.available_balance || balanceData.data?.ledger_balance || 0;
+          await this.usersService.updateWalletBalance(agentId, actualBalance);
+          this.logger.log(`✓ Agent ${agentId} balance synced with Flutterwave virtual account: ₦${actualBalance.toLocaleString()}`);
+        } catch (balanceError: any) {
+          // If sync fails, add to local balance as fallback
+          this.logger.warn(`Could not sync Flutterwave balance, updating locally:`, balanceError.message || balanceError);
+          await this.usersService.addToWalletBalance(agentId, agentAmount);
+          this.logger.log(`✓ Local earnings balance updated: ₦${agentAmount} added to agent ${agentId}`);
+        }
+      } else {
+        // Split payment was not configured - full payment went to platform account
+        // This should not happen if agent has virtual account, but handle gracefully
+        this.logger.warn(`⚠ Split payment was not configured. Full payment (₦${viewing.viewingFee}) is in platform account.`);
+        this.logger.warn(`  Platform commission (₦${platformFee}) stays in platform. Agent share (₦${agentAmount}) requires manual disbursement.`);
+        
+        // Still add to local balance for tracking
+        await this.usersService.addToWalletBalance(agentId, agentAmount);
+        this.logger.warn(`Added ₦${agentAmount} to agent ${agentId} local earnings. Manual transfer required.`);
+      }
+      
+      // Create earning record
+      await this.usersService.createEarning({
+        userId: agentId,
+        amount: agentAmount,
+        grossAmount: viewing.viewingFee!,
+        platformFee: platformFeePercentage,
+        type: 'viewing_fee',
+        description: `Viewing fee for ${house?.title || 'property'}`,
+        viewingId: viewing._id?.toString(),
+        houseId: houseId,
+        propertyTitle: house?.title,
+        clientName: userName,
+      });
     }
 
-    // Get house details for email
-    const house = await this.housesService.findOne(viewing.houseId.toString());
-
     // Send email notifications to user and agent
+    const houseDetails = await this.housesService.findOne(houseId);
     try {
       const userEmail = (viewing as any).userId?.email || (viewing as any).guestEmail;
-      const userName = (viewing as any).userId?.name || (viewing as any).guestName || 'User';
+      const clientName = (viewing as any).userId?.name || (viewing as any).guestName || 'User';
       const agentEmail = (viewing as any).agentId?.email;
       const agentName = (viewing as any).agentId?.name || 'Agent';
 
       if (userEmail) {
         await this.emailService.sendViewingPaymentConfirmationEmail(
           userEmail,
-          userName,
+          clientName,
           viewing.viewingFee!,
-          house?.title || 'Property',
+          houseDetails?.title || 'Property',
           viewing.scheduledDate,
           viewing.scheduledTime,
         );
@@ -449,8 +713,8 @@ export class ViewingsService {
           viewing.viewingFee!,
           agentAmount,
           platformFee,
-          house?.title || 'Property',
-          userName,
+          houseDetails?.title || 'Property',
+          clientName,
         );
       }
     } catch (error) {

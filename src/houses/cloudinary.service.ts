@@ -11,11 +11,17 @@ export interface UploadResult {
 
 @Injectable()
 export class CloudinaryService {
+  private readonly isConfigured: boolean;
   constructor(private readonly configService: ConfigService) {
+    const cloudName = this.configService.get<string>('CLOUDINARY_CLOUD_NAME');
+    const apiKey = this.configService.get<string>('CLOUDINARY_API_KEY');
+    const apiSecret = this.configService.get<string>('CLOUDINARY_API_SECRET');
+
+    this.isConfigured = Boolean(cloudName && apiKey && apiSecret);
     cloudinary.config({
-      cloud_name: this.configService.get<string>('CLOUDINARY_CLOUD_NAME'),
-      api_key: this.configService.get<string>('CLOUDINARY_API_KEY'),
-      api_secret: this.configService.get<string>('CLOUDINARY_API_SECRET'),
+      cloud_name: cloudName,
+      api_key: apiKey,
+      api_secret: apiSecret,
     });
   }
 
@@ -29,6 +35,11 @@ export class CloudinaryService {
     filename: string,
     folder: string = 'nestin-estate/properties',
   ): Promise<UploadResult> {
+    if (!this.isConfigured) {
+      throw new Error(
+        'Image upload service is not configured. Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET.'
+      );
+    }
     try {
       const result = await new Promise<UploadApiResponse>((resolve, reject) => {
         const upload = cloudinary.uploader.upload_stream(
@@ -56,7 +67,10 @@ export class CloudinaryService {
       };
     } catch (error) {
       console.error('Cloudinary upload error:', error);
-      throw new Error('Failed to upload image');
+      // Surface a clearer message to the controller/clients
+      throw new Error(
+        (error as any)?.message || 'Failed to upload image'
+      );
     }
   }
 

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -27,6 +28,17 @@ export class HousesService {
     @Inject(forwardRef(() => EmailService))
     private readonly emailService: EmailService,
   ) {}
+
+  /**
+   * Validates if a string is a valid MongoDB ObjectId
+   * @param id - The ID string to validate
+   * @throws BadRequestException if the ID is invalid
+   */
+  private validateObjectId(id: string, fieldName = 'ID'): void {
+    if (!id || !Types.ObjectId.isValid(id)) {
+      throw new BadRequestException(`Invalid ${fieldName} format`);
+    }
+  }
 
   async create(agentId: string, dto: CreateHouseDto) {
     const agent = await this.usersService.findById(agentId);
@@ -223,6 +235,9 @@ export class HousesService {
   }
 
   async findOne(id: string, trackView = false) {
+    this.validateObjectId(id, 'property ID');
+
+    try {
     const house = await this.houseModel
       .findOne({
         _id: new Types.ObjectId(id),
@@ -240,24 +255,50 @@ export class HousesService {
     }
 
     return this.toHouseResponse(house);
+    } catch (error) {
+      // Catch BSON errors and convert to BadRequestException
+      if (error instanceof Error && error.name === 'BSONError') {
+        throw new BadRequestException('Invalid property ID format');
+      }
+      // Re-throw other errors (like NotFoundException, BadRequestException)
+      throw error;
+    }
   }
 
   async trackView(id: string) {
+    this.validateObjectId(id, 'property ID');
+    try {
     await this.houseModel
       .findByIdAndUpdate(new Types.ObjectId(id), {
         $inc: { viewCount: 1 },
       })
       .exec();
     return { success: true };
+    } catch (error) {
+      // Catch BSON errors silently for tracking (non-critical operation)
+      if (error instanceof Error && error.name === 'BSONError') {
+        return { success: false };
+      }
+      throw error;
+    }
   }
 
   async trackWhatsAppClick(id: string) {
+    this.validateObjectId(id, 'property ID');
+    try {
     await this.houseModel
       .findByIdAndUpdate(new Types.ObjectId(id), {
         $inc: { whatsappClicks: 1 },
       })
       .exec();
     return { success: true };
+    } catch (error) {
+      // Catch BSON errors silently for tracking (non-critical operation)
+      if (error instanceof Error && error.name === 'BSONError') {
+        return { success: false };
+      }
+      throw error;
+    }
   }
 
   async update(
@@ -326,6 +367,38 @@ export class HousesService {
     return this.toHouseResponse(updatedHouse);
   }
 
+  async updateViewingFee(houseId: string, agentId: string, viewingFee: number) {
+    await this.ensureAgentOwnsHouse(agentId, houseId);
+
+    const house = await this.houseModel.findById(new Types.ObjectId(houseId)).exec();
+    if (!house) {
+      throw new NotFoundException('House not found');
+    }
+
+    const updateData: any = {};
+    if (viewingFee === 0 || viewingFee === null || viewingFee === undefined) {
+      // Remove viewing fee
+      updateData.viewingFee = undefined;
+    } else {
+      updateData.viewingFee = viewingFee;
+    }
+
+    const updatedHouse = await this.houseModel
+      .findByIdAndUpdate(
+        new Types.ObjectId(houseId),
+        { $set: updateData },
+        { new: true },
+      )
+      .exec();
+
+    if (!updatedHouse) {
+      throw new NotFoundException('House not found');
+    }
+
+    await updatedHouse.populate('agentId');
+    return this.toHouseResponse(updatedHouse);
+  }
+
   async remove(houseId: string, agentId: string): Promise<void> {
     await this.ensureAgentOwnsHouse(agentId, houseId);
     await this.houseModel
@@ -372,6 +445,10 @@ export class HousesService {
   }
 
   private async ensureAgentOwnsHouse(agentId: string, houseId: string) {
+    this.validateObjectId(houseId, 'property ID');
+    this.validateObjectId(agentId, 'agent ID');
+    
+    try {
     const house = await this.houseModel
       .findOne({
         _id: new Types.ObjectId(houseId),
@@ -381,10 +458,21 @@ export class HousesService {
 
     if (!house) {
       throw new ForbiddenException('You do not own this listing');
+      }
+    } catch (error) {
+      // Catch BSON errors and convert to BadRequestException
+      if (error instanceof Error && error.name === 'BSONError') {
+        throw new BadRequestException('Invalid ID format');
+      }
+      throw error;
     }
   }
 
   async bookSlot(houseId: string, userId: string) {
+    this.validateObjectId(houseId, 'property ID');
+    this.validateObjectId(userId, 'user ID');
+    
+    try {
     const house = await this.houseModel
       .findById(new Types.ObjectId(houseId))
       .populate('agentId', 'name email phone')
@@ -487,6 +575,14 @@ export class HousesService {
       message: 'Slot booked successfully',
       availableSlots: slotsRemaining,
     };
+    } catch (error) {
+      // Catch BSON errors and convert to BadRequestException
+      if (error instanceof Error && error.name === 'BSONError') {
+        throw new BadRequestException('Invalid ID format');
+      }
+      // Re-throw other errors (like NotFoundException, ForbiddenException)
+      throw error;
+    }
   }
 
   async cancelSlot(houseId: string, userId: string) {

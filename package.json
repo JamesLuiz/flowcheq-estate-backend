@@ -18,7 +18,10 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "seed:admin": "ts-node ./scripts/seed-admin.ts"
+    "seed:admin": "ts-node ./scripts/seed-admin.ts",
+    "create-virtual-accounts": "ts-node src/scripts/create-virtual-accounts.ts",
+    "update-subaccount-ids": "ts-node src/scripts/update-wallet-subaccount-ids.ts",
+    "create-split-subaccounts": "ts-node src/scripts/create-split-subaccounts.ts"
   },
   "dependencies": {
     "@emailjs/browser": "^4.4.1",

@@ -41,5 +41,10 @@ export class ScheduleViewingDto {
   @IsString()
   @IsOptional()
   phone?: string;
+
+  @ApiProperty({ example: '64a1f2e9c...', description: 'User ID (if logged in)', required: false })
+  @IsString()
+  @IsOptional()
+  userId?: string;
 }
 

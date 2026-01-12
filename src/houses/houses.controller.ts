@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -14,6 +15,7 @@ import {
   MaxFileSizeValidator,
   FileTypeValidator,
   BadRequestException,
+  HttpException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody, ApiParam, ApiQuery } from '@nestjs/swagger';
@@ -93,21 +95,37 @@ export class HousesController {
   async create(
     @CurrentUser() user: RequestUser,
     @Body() body: any,
-    @UploadedFiles(
-      new ParseFilePipe({
-        validators: [
-          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }), // 5MB
-          new FileTypeValidator({ fileType: /(jpg|jpeg|png|webp)$/ }),
-        ],
-        fileIsRequired: false,
-      }),
-    )
-    files?: Express.Multer.File[],
+    @UploadedFiles() files?: Express.Multer.File[],
   ) {
+    // Log received data for debugging
+    console.log('Received house creation request:', {
+      title: body.title,
+      description: body.description?.substring(0, 50) + '...',
+      price: body.price,
+      location: body.location,
+      type: body.type,
+      filesCount: files?.length || 0,
+      hasCoordinates: !!(body.coordinates || (body.lat && body.lng)),
+    });
     // Parse form data fields (they come as strings in multipart/form-data)
+    // Strip HTML from description if it contains HTML tags
+    let description = body.description || '';
+    if (description && description.includes('<')) {
+      // Simple HTML stripping - remove tags but keep text content
+      description = description
+        .replace(/<[^>]*>/g, ' ') // Remove HTML tags
+        .replace(/\s+/g, ' ') // Normalize whitespace
+        .trim();
+    }
+
+    // Validate description is not empty after stripping HTML
+    if (!description || description.length === 0) {
+      throw new BadRequestException('Description is required and cannot be empty');
+    }
+
     const dto: CreateHouseDto = {
       title: body.title,
-      description: body.description,
+      description: description,
       price: Number(body.price),
       location: body.location,
       type: body.type,
@@ -115,6 +133,10 @@ export class HousesController {
       bathrooms: body.bathrooms ? Number(body.bathrooms) : undefined,
       area: body.area ? Number(body.area) : undefined,
       featured: body.featured === 'true' || body.featured === true,
+      isShared: body.isShared === 'true' || body.isShared === true,
+      totalSlots: body.totalSlots ? Number(body.totalSlots) : undefined,
+      viewingFee: body.viewingFee ? Number(body.viewingFee) : undefined,
+      listingType: body.listingType || 'buy',
     };
 
     // Parse coordinates if provided
@@ -144,8 +166,31 @@ export class HousesController {
 
     // Upload files to Cloudinary if provided
     if (files && files.length > 0) {
+      // Log each file's metadata for debugging
+      files.forEach((file, idx) => {
+        console.log(`Received file[${idx}]: name=${file.originalname}, mimetype=${file.mimetype}, size=${file.size}`);
+      });
+
       if (files.length < 3 || files.length > 5) {
         throw new BadRequestException('You must upload between 3 and 5 images');
+      }
+
+      // Additional safety: ensure all files are images and within size
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      const allowedPrefix = /^image\//i;
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/pjpeg', 'image/x-png'];
+
+      for (const file of files) {
+        if (!file.mimetype || !allowedPrefix.test(file.mimetype)) {
+          throw new BadRequestException(`Invalid file type: ${file.mimetype || 'unknown'}. Only image/* uploads are allowed.`);
+        }
+        if (file.size > maxSize) {
+          throw new BadRequestException(`File ${file.originalname} exceeds the maximum size of 5MB.`);
+        }
+        if (!allowedTypes.includes(file.mimetype.toLowerCase())) {
+          // Warn but allow lesser-known image/* types
+          console.warn('Uncommon image MIME type received:', file.mimetype);
+        }
       }
 
       const uploadPromises = files.map((file) =>
@@ -162,10 +207,23 @@ export class HousesController {
         : body.images.split(',').map((url: string) => url.trim()).filter(Boolean);
     }
 
-    return this.housesService.create(user.sub, {
-      ...dto,
-      images: imageUrls,
-    });
+    try {
+      return await this.housesService.create(user.sub, {
+        ...dto,
+        images: imageUrls,
+      });
+    } catch (error: any) {
+      console.error('Error creating house:', error);
+      // Re-throw with better error message
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      // Preserve original HTTP exceptions like Forbidden/Unauthorized
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new BadRequestException(error?.message || 'Failed to create property listing');
+    }
   }
 
   @Get()
@@ -428,5 +486,50 @@ export class HousesController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getCoTenants(@Param('id') id: string, @CurrentUser() user: RequestUser) {
     return this.housesService.getCoTenants(id, user.sub);
+  }
+
+  @Patch(':id/viewing-fee')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Update viewing fee for a property (owner only)' })
+  @ApiParam({ name: 'id', description: 'Property ID', example: '64a1f2e9c...' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        viewingFee: {
+          type: 'number',
+          minimum: 0,
+          example: 5000,
+          description: 'Viewing fee in Naira (0 to remove viewing fee)',
+        },
+      },
+      required: ['viewingFee'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Viewing fee updated successfully',
+    schema: {
+      example: {
+        _id: '64a1f2e9c...',
+        viewingFee: 5000,
+        updatedAt: '2025-01-01T12:00:00.000Z',
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - not the property owner' })
+  @ApiResponse({ status: 404, description: 'Property not found' })
+  async updateViewingFee(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Body() body: { viewingFee: number },
+  ) {
+    if (body.viewingFee < 0) {
+      throw new BadRequestException('Viewing fee cannot be negative');
+    }
+
+    return this.housesService.updateViewingFee(id, user.sub, body.viewingFee);
   }
 }
