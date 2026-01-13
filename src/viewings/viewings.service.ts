@@ -479,17 +479,18 @@ export class ViewingsService {
           const splitSubaccountId = await this.flutterwaveService.ensureSplitPaymentSubaccount(agentIdString);
 
           if (splitSubaccountId) {
-            // Convert platform percentage to decimal (10% = 0.1)
-            const platformCommissionDecimal = platformFeePercentage / 100;
+            // Calculate agent's percentage (agent gets 90%, platform keeps 10%)
+            // split_value should be the percentage going to the SUBACCOUNT (agent), not platform commission
+            const agentPercentage = 100 - platformFeePercentage; // e.g., 100 - 10 = 90
             
             subaccounts = [
               {
                 id: splitSubaccountId, // Split payment subaccount ID (RS_xxx) pointing to virtual account
                 transaction_charge_type: 'percentage' as const,
-                transaction_charge: platformCommissionDecimal, // Platform takes 10%, agent gets 90%
+                transaction_charge: agentPercentage, // Agent gets 90%, platform keeps 10%
               },
             ];
-            this.logger.log(`✓ Split payment configured: Platform takes ${platformFeePercentage}% (${platformCommissionDecimal}), Agent's virtual account ${agentWallet.accountNumber} receives ${100 - platformFeePercentage}%`);
+            this.logger.log(`✓ Split payment configured: Agent's virtual account ${agentWallet.accountNumber} receives ${agentPercentage}%, Platform keeps ${platformFeePercentage}%`);
           } else {
             this.logger.warn(`⚠ Could not create split payment subaccount for agent ${agentIdString}. Payment will go to platform account.`);
           }

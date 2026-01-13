@@ -118,9 +118,25 @@ export class FlutterwaveWebhookController {
       const data = payload.data;
 
       this.logger.log(`Payment webhook received: ${event}`);
+      this.logger.log(`Payment webhook data: ${JSON.stringify(data, null, 2)}`);
 
-      // You can add payment-related webhook handling here
-      // For example, updating payment status, processing refunds, etc.
+      // Handle successful payment events
+      if (event === 'charge.completed' && data.status === 'successful') {
+        this.logger.log(`Payment successful: Transaction ID ${data.id}, Amount: ${data.amount} ${data.currency}, Reference: ${data.tx_ref}`);
+        
+        // Log split payment information if available
+        if (data.meta && data.meta.subaccounts) {
+          this.logger.log(`Split payment details: ${JSON.stringify(data.meta.subaccounts)}`);
+        }
+        
+        // Check if this is a viewing payment
+        if (data.meta && data.meta.viewingId) {
+          this.logger.log(`Viewing payment completed for viewing ID: ${data.meta.viewingId}`);
+          // The viewing payment verification will be handled by the callback endpoint
+        }
+      } else if (event === 'charge.completed' && data.status === 'failed') {
+        this.logger.warn(`Payment failed: Transaction ID ${data.id}, Reference: ${data.tx_ref}, Message: ${data.processor_response || 'Unknown error'}`);
+      }
 
       return { status: 'success' };
     } catch (error: any) {

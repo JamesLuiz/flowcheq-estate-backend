@@ -82,7 +82,7 @@ export class FlutterwaveService {
       // Add subaccounts for split payment (if provided)
       if (data.subaccounts && data.subaccounts.length > 0) {
         // Flutterwave split payment format:
-        // For percentage: split_type = 'percentage', split_value = decimal (0.1 = 10% to platform, 90% to subaccount)
+        // For percentage: split_type = 'percentage', split_value = whole number (90 = 90% to subaccount, 10% to platform)
         // For flat: split_type = 'flat', split_value = amount
         paymentData.subaccounts = data.subaccounts.map((s: any) => {
           const mapped: any = {
@@ -92,8 +92,8 @@ export class FlutterwaveService {
           // Map transaction_charge_type to split_type
           if (s.transaction_charge_type === 'percentage') {
             mapped.split_type = 'percentage';
-            // transaction_charge is platform commission as decimal (0.1 = 10%)
-            // split_value should be the same decimal
+            // transaction_charge is the percentage going to the SUBACCOUNT (agent) as whole number (90 = 90%)
+            // split_value should be the same whole number
             mapped.split_value = s.transaction_charge;
           } else if (s.transaction_charge_type === 'flat') {
             mapped.split_type = 'flat';
