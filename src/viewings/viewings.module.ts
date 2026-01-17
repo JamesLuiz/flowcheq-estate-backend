@@ -25,4 +25,4 @@ import { AuthModule } from '../auth/auth.module';
   providers: [ViewingsService, CloudinaryService],
   exports: [ViewingsService],
 })
-export class ViewingsModule {}
+export class ViewingsModule { }

@@ -29,6 +29,24 @@ export class House {
   @Prop({ type: [String], default: [] })
   images: string[];
 
+  // Tagged photos with room types and descriptions
+  @Prop({
+    type: [
+      {
+        url: { type: String, required: true },
+        tag: { type: String, required: true }, // e.g., 'bathroom', 'bedroom', 'kitchen', 'sitting-room', 'lobby', 'toilet', 'full-photo'
+        description: { type: String },
+        _id: false,
+      },
+    ],
+    default: [],
+  })
+  taggedPhotos?: Array<{
+    url: string;
+    tag: string;
+    description?: string;
+  }>;
+
   @Prop({
     type: MongooseSchema.Types.ObjectId,
     ref: User.name,
@@ -96,6 +114,18 @@ export class House {
   // Listing type: 'rent' or 'buy'
   @Prop({ type: String, enum: ['rent', 'buy'], default: 'buy', index: true })
   listingType?: 'rent' | 'buy';
+
+  // Airbnb listing
+  @Prop({ default: false })
+  isAirbnb?: boolean;
+
+  // Proof of address (utility bill or C of O)
+  @Prop({ type: String })
+  proofOfAddress?: string; // URL to uploaded document
+
+  // Address verification status (set by admin)
+  @Prop({ default: false, index: true })
+  addressVerified?: boolean;
 }
 
 export type HouseDocument = HydratedDocument<House>;

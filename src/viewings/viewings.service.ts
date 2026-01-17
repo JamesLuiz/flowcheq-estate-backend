@@ -24,7 +24,7 @@ export class ViewingsService {
     private flutterwaveService: FlutterwaveService,
     @Inject(forwardRef(() => EmailService))
     private emailService: EmailService,
-  ) {}
+  ) { }
 
   async schedule(dto: {
     houseId: string;
@@ -75,7 +75,7 @@ export class ViewingsService {
 
   private async sendNotifications(viewing: ViewingDocument, house: any, agent: any, dto: any) {
     const nodemailer = await import('nodemailer');
-    
+
     const transporter = nodemailer.createTransport({
       host: this.configService.get('SMTP_HOST') || 'smtp.gmail.com',
       port: parseInt(this.configService.get('SMTP_PORT') || '587'),
@@ -183,8 +183,8 @@ export class ViewingsService {
     // - Paid viewings: viewingFee > 0 AND paymentStatus = 'paid'
     // Unpaid viewings with viewingFee > 0 will NOT be shown
     const viewings = await this.viewingModel
-      .find({ 
-        agentId: new Types.ObjectId(agentId), 
+      .find({
+        agentId: new Types.ObjectId(agentId),
         deleted: { $ne: true },
         $or: [
           // Free viewings (no fee required)
@@ -192,7 +192,7 @@ export class ViewingsService {
           { viewingFee: 0 },
           { viewingFee: null },
           // Paid viewings (fee required and payment confirmed)
-          { 
+          {
             viewingFee: { $gt: 0 },
             paymentStatus: 'paid'
           },
@@ -261,7 +261,7 @@ export class ViewingsService {
     // Check if user is the agent/landlord for this viewing
     const viewingAgentId = (viewing.agentId as any)?._id?.toString() || viewing.agentId?.toString();
     const isViewingAgent = viewingAgentId === userId;
-    
+
     if (!isAdmin && !isViewingAgent) {
       throw new ForbiddenException('Not authorized to update this viewing');
     }
@@ -287,7 +287,7 @@ export class ViewingsService {
 
   private async sendRescheduleEmail(viewing: ViewingDocument, newDate: string, newTime: string) {
     const nodemailer = await import('nodemailer');
-    
+
     const transporter = nodemailer.createTransport({
       host: this.configService.get('SMTP_HOST') || 'smtp.gmail.com',
       port: parseInt(this.configService.get('SMTP_PORT') || '587'),
@@ -332,7 +332,7 @@ export class ViewingsService {
 
   private async sendStatusUpdateEmail(viewing: ViewingDocument, status: string) {
     const nodemailer = await import('nodemailer');
-    
+
     const transporter = nodemailer.createTransport({
       host: this.configService.get('SMTP_HOST') || 'smtp.gmail.com',
       port: parseInt(this.configService.get('SMTP_PORT') || '587'),
@@ -452,7 +452,7 @@ export class ViewingsService {
       // NEW APPROACH: Use Flutterwave Split Payment Subaccounts
       // Payment automatically splits: platform keeps commission %, agent gets their share %
       const agentIdString = agent._id?.toString() || agent.id;
-      
+
       // Get platform fee percentage (dynamic from settings)
       let platformFeePercentage = parseFloat(
         this.configService.get<string>('VIEWING_FEE_PERCENTAGE') || '10',
@@ -469,11 +469,11 @@ export class ViewingsService {
       // Check if agent has virtual account for split payment
       // Funds will go to agent's virtual account, then they can withdraw to bank account
       let subaccounts: any[] = [];
-      
+
       // Check if agent has virtual account
       try {
         const agentWallet = await this.flutterwaveService.getWalletByUserId(agentIdString);
-        
+
         if (agentWallet && agentWallet.accountNumber && agentWallet.bankCode) {
           // Ensure split payment subaccount exists using virtual account details
           const splitSubaccountId = await this.flutterwaveService.ensureSplitPaymentSubaccount(agentIdString);
@@ -482,7 +482,7 @@ export class ViewingsService {
             // Calculate agent's percentage (agent gets 90%, platform keeps 10%)
             // split_value should be the percentage going to the SUBACCOUNT (agent), not platform commission
             const agentPercentage = 100 - platformFeePercentage; // e.g., 100 - 10 = 90
-            
+
             subaccounts = [
               {
                 id: splitSubaccountId, // Split payment subaccount ID (RS_xxx) pointing to virtual account
@@ -548,8 +548,8 @@ export class ViewingsService {
     // Verify payment with Flutterwave using tx_ref
     const verification = await this.flutterwaveService.verifyPaymentByReference(txRef);
 
-  // DEBUG: log verification data to inspect split/subaccount information
-  this.logger.log(`Flutterwave verification data for tx_ref=${txRef}: ${JSON.stringify(verification.data || verification)}`);
+    // DEBUG: log verification data to inspect split/subaccount information
+    this.logger.log(`Flutterwave verification data for tx_ref=${txRef}: ${JSON.stringify(verification.data || verification)}`);
 
     if (!verification.success) {
       viewing.paymentStatus = 'failed';
@@ -566,7 +566,7 @@ export class ViewingsService {
     let platformFeePercentage = parseFloat(
       this.configService.get<string>('VIEWING_FEE_PERCENTAGE') || '10',
     );
-    
+
     // Try to get from database settings
     try {
       const settings = await this.settingsModel.findOne({ key: 'platformFeePercentage' });
@@ -593,7 +593,7 @@ export class ViewingsService {
     // Extract agent ID properly (handle both populated and non-populated cases)
     let agentId: string;
     let houseId: string;
-    
+
     // Check if agentId is populated (object) or just an ObjectId
     const agentIdValue = viewing.agentId as any;
     if (agentIdValue && typeof agentIdValue === 'object') {
@@ -610,7 +610,7 @@ export class ViewingsService {
       // If it's already a string or ObjectId
       agentId = agentIdValue?.toString() || '';
     }
-    
+
     // Check if houseId is populated (object) or just an ObjectId
     const houseIdValue = viewing.houseId as any;
     if (houseIdValue && typeof houseIdValue === 'object') {
@@ -627,29 +627,29 @@ export class ViewingsService {
       // If it's already a string or ObjectId
       houseId = houseIdValue?.toString() || '';
     }
-    
+
     if (!agentId) {
       throw new Error('Unable to extract agent ID from viewing');
     }
     if (!houseId) {
       throw new Error('Unable to extract house ID from viewing');
     }
-    
+
     const agent = await this.usersService.findById(agentId);
     if (agent) {
       const house = await this.housesService.findOne(houseId);
       const userName = (viewing as any).userId?.name || (viewing as any).guestName || 'Guest';
-      
+
       // Check if split payment was used (agent has split payment subaccount)
       const agentWallet = await this.flutterwaveService.getWalletByUserId(agentId);
       const usedSplitPayment = agentWallet && agentWallet.subaccountId && agentWallet.subaccountId.startsWith('RS_');
-      
+
       if (usedSplitPayment) {
         // Split payment was configured - funds automatically split at payment time
         // Agent's share (90%) goes to their virtual account wallet
         // Platform commission (10%) stays in platform account automatically
         this.logger.log(`✓ Split payment processed automatically: ₦${agentAmount} (${100 - platformFeePercentage}%) to agent ${agentId} virtual account (${agentWallet.accountNumber}), ₦${platformFee} (${platformFeePercentage}%) to platform.`);
-        
+
         // Sync balance from Flutterwave virtual account (funds should be there now)
         try {
           const balanceData = await this.flutterwaveService.getAvailableBalance(agentId);
@@ -667,12 +667,12 @@ export class ViewingsService {
         // This should not happen if agent has virtual account, but handle gracefully
         this.logger.warn(`⚠ Split payment was not configured. Full payment (₦${viewing.viewingFee}) is in platform account.`);
         this.logger.warn(`  Platform commission (₦${platformFee}) stays in platform. Agent share (₦${agentAmount}) requires manual disbursement.`);
-        
+
         // Still add to local balance for tracking
         await this.usersService.addToWalletBalance(agentId, agentAmount);
         this.logger.warn(`Added ₦${agentAmount} to agent ${agentId} local earnings. Manual transfer required.`);
       }
-      
+
       // Create earning record
       await this.usersService.createEarning({
         userId: agentId,

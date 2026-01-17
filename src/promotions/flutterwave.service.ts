@@ -46,7 +46,7 @@ export class FlutterwaveService {
     subaccounts?: Array<{
       id: string; // subaccount ID (e.g., RS_xxx) - NOT account_reference
       transaction_charge_type: 'percentage' | 'flat' | 'flat_subaccount'; // Split type
-      transaction_charge: number; // Platform commission: decimal for percentage (0.1 = 10%), or flat amount in currency
+      transaction_charge: number; // Split Rule: percentage (whole number, e.g. 90 = 90% for subaccount) or flat amount
     }>;
   }) {
     try {
@@ -88,7 +88,7 @@ export class FlutterwaveService {
           const mapped: any = {
             id: s.id, // Split payment subaccount ID (RS_xxx)
           };
-          
+
           // Map transaction_charge_type to split_type
           if (s.transaction_charge_type === 'percentage') {
             mapped.split_type = 'percentage';
@@ -99,14 +99,16 @@ export class FlutterwaveService {
             mapped.split_type = 'flat';
             mapped.split_value = s.transaction_charge; // Flat amount in currency
           } else if (s.transaction_charge_type === 'flat_subaccount') {
-            mapped.split_type = 'flat_subaccount';
-            mapped.split_value = s.transaction_charge;
+            // For flat_subaccount, the API expects 'transaction_charge_type' and 'transaction_charge' to be passed directly
+            // This overrides the default split logic (which usually defaults to a split ratio or flat split)
+            mapped.transaction_charge_type = 'flat_subaccount';
+            mapped.transaction_charge = s.transaction_charge;
           } else {
             // Fallback: use as-is if already in Flutterwave format
             mapped.split_type = s.split_type || s.transaction_charge_type || 'percentage';
             mapped.split_value = s.split_value || s.transaction_charge;
           }
-          
+
           return mapped;
         });
         this.logger.log('Initializing Flutterwave payment with split payment subaccounts:', JSON.stringify(paymentData.subaccounts));
@@ -293,7 +295,7 @@ export class FlutterwaveService {
   }): Promise<any> {
     let { account_name, email = '', mobilenumber } = data;
     email = email.toLowerCase();
-    
+
     try {
       // Check if wallet already exists
       const existingWallet = await this.walletModel.findOne({ email });
@@ -314,21 +316,21 @@ export class FlutterwaveService {
       let check = true;
       let next_cursor = '';
       const payout_subaccounts: any[] = [];
-      
+
       while (check) {
         const response = await axios.request({
           method: 'GET',
           url: `https://api.flutterwave.com/v3/payout-subaccounts?limit=20${next_cursor ? `&next_cursor=${next_cursor}` : ''}`,
           headers: this.headers,
         });
-        
+
         if (response.data.data?.cursor) {
           next_cursor = response.data.data.cursor.next || '';
           check = response.data.data.cursor.has_more_items || false;
         } else {
           check = false;
         }
-        
+
         if (response.data.data?.payout_subaccounts && Array.isArray(response.data.data.payout_subaccounts)) {
           payout_subaccounts.push(...response.data.data.payout_subaccounts);
         }
@@ -337,7 +339,7 @@ export class FlutterwaveService {
       let responseType: any = payout_subaccounts.find(
         (sub: any) => sub.email?.toLowerCase() === email.toLowerCase()
       );
-      
+
       // If found existing subaccount, ensure we have the ID
       if (responseType && !responseType.id && responseType.account_reference) {
         // Try to get the full subaccount details including ID
@@ -437,7 +439,7 @@ export class FlutterwaveService {
       // Save wallet information
       // Ensure subaccountId is a string if it exists
       const subaccountId = responseType.id ? String(responseType.id).trim() : undefined;
-      
+
       const walletData = {
         accountNumber: responseType.nuban,
         accountName: account_name,
@@ -462,7 +464,7 @@ export class FlutterwaveService {
       return responseType;
     } catch (error: any) {
       this.logger.error('Error creating virtual account:', error.response?.data || error.message);
-      
+
       // If account already exists, try to fetch from database
       if (error.response?.data?.message?.toLowerCase().includes('exist')) {
         const user = await this.userModel.findOne({ email });
@@ -478,7 +480,7 @@ export class FlutterwaveService {
           };
         }
       }
-      
+
       throw error.response?.data || error;
     }
   }
@@ -497,15 +499,15 @@ export class FlutterwaveService {
         headers: this.headers,
       };
       const response = await axios.request(options);
-      
+
       // Return balance data with wallet info
-      return { 
-        data: { 
+      return {
+        data: {
           available_balance: response.data.data?.available_balance || 0,
           ledger_balance: response.data.data?.ledger_balance || 0,
           currency: response.data.data?.currency || 'NGN',
-          wallet 
-        } 
+          wallet
+        }
       };
     } catch (error: any) {
       this.logger.error('Error fetching available balance:', error.response?.data || error.message);
@@ -566,7 +568,7 @@ export class FlutterwaveService {
     try {
       // Get wallet details to get bank account number and bank code
       const wallet = await this.walletModel.findOne({ customerCode: account_reference }).exec();
-      
+
       if (!wallet || !wallet.accountNumber || !wallet.bankCode) {
         throw new Error(`Virtual account not found or missing bank details for account_reference: ${account_reference}`);
       }
@@ -625,7 +627,7 @@ export class FlutterwaveService {
         try {
           const response = await axios.get(
             `${this.baseUrl}/subaccounts`,
-            { 
+            {
               headers: this.headers,
               params: { page }
             }
@@ -633,10 +635,10 @@ export class FlutterwaveService {
 
           // Flutterwave API response structure may vary
           const subaccounts = response.data?.data || response.data || [];
-          
+
           if (Array.isArray(subaccounts) && subaccounts.length > 0) {
             allSubaccounts.push(...subaccounts);
-            
+
             // Check pagination - Flutterwave may use different pagination structures
             const meta = response.data?.meta;
             if (meta) {
@@ -678,12 +680,12 @@ export class FlutterwaveService {
   async findExistingSubaccount(account_bank: string, account_number: string): Promise<string | null> {
     try {
       const subaccounts = await this.fetchExistingSubaccounts();
-      
+
       if (subaccounts.length === 0) {
         this.logger.log(`No existing subaccounts found in Flutterwave`);
         return null;
       }
-      
+
       // Find subaccount matching account number and bank code
       // Flutterwave may return account_number and account_bank in different formats
       const matchingSubaccount = subaccounts.find(
@@ -692,7 +694,7 @@ export class FlutterwaveService {
           const subAccountBank = String(sub.account_bank || sub.accountBank || '').trim();
           const searchAccountNumber = String(account_number).trim();
           const searchAccountBank = String(account_bank).trim();
-          
+
           return subAccountNumber === searchAccountNumber && subAccountBank === searchAccountBank;
         }
       );
@@ -703,7 +705,7 @@ export class FlutterwaveService {
         this.logger.log(`Found existing subaccount ${idString} for account ${account_number} (bank: ${account_bank})`);
         return idString;
       }
-      
+
       // Fallback: Check if id exists but log warning
       if (matchingSubaccount?.id) {
         this.logger.warn(`Found subaccount with numeric id ${matchingSubaccount.id} but no subaccount_id. This may not work for split payments.`);
@@ -769,17 +771,17 @@ export class FlutterwaveService {
             account_number,
           };
         }
-        
+
         // Log warning if we only have numeric id
         if (response.data?.data?.id) {
           this.logger.warn(`Subaccount created but no subaccount_id returned. Got numeric id: ${response.data.data.id}. Split payments may not work.`);
         }
       } catch (createError: any) {
         // If subaccount already exists, try to find it again
-        if (createError.response?.data?.message?.toLowerCase().includes('exist') || 
-            createError.response?.data?.message?.toLowerCase().includes('already')) {
+        if (createError.response?.data?.message?.toLowerCase().includes('exist') ||
+          createError.response?.data?.message?.toLowerCase().includes('already')) {
           this.logger.log(`Subaccount creation failed (may already exist), searching for existing subaccount...`);
-          
+
           // Try to find it one more time (in case it was just created)
           const foundId = await this.findExistingSubaccount(account_bank, account_number);
           if (foundId) {
@@ -790,7 +792,7 @@ export class FlutterwaveService {
               account_number,
             };
           }
-          
+
           // If still not found, throw error
           throw new Error(`Split payment subaccount may already exist but could not be retrieved. Please check Flutterwave dashboard.`);
         }

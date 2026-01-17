@@ -55,7 +55,23 @@ export class CreateHouseDto {
   @IsOptional()
   images?: string[];
 
-  @ApiProperty({ example: '640b1f2e9c...' , required: false })
+  @ApiProperty({
+    example: [
+      { url: 'https://example.com/kitchen.jpg', tag: 'kitchen', description: 'Modern kitchen with island' },
+      { url: 'https://example.com/bedroom.jpg', tag: 'bedroom', description: 'Master bedroom' },
+    ],
+    required: false,
+    description: 'Tagged photos with room types and descriptions (max 8)',
+  })
+  @IsArray()
+  @IsOptional()
+  taggedPhotos?: Array<{
+    url: string;
+    tag: string;
+    description?: string;
+  }>;
+
+  @ApiProperty({ example: '640b1f2e9c...', required: false })
   @IsMongoId()
   @IsOptional()
   agentId?: string;
@@ -113,5 +129,16 @@ export class CreateHouseDto {
   @IsString()
   @IsOptional()
   listingType?: 'rent' | 'buy';
+
+  @ApiProperty({ example: false, required: false, description: 'Mark as Airbnb listing' })
+  @IsBoolean()
+  @IsOptional()
+  @Type(() => Boolean)
+  isAirbnb?: boolean;
+
+  @ApiProperty({ example: 'https://example.com/proof.pdf', required: false, description: 'URL to proof of address document' })
+  @IsString()
+  @IsOptional()
+  proofOfAddress?: string;
 }
 

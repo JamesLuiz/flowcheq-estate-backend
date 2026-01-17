@@ -17,7 +17,7 @@ import {
   BadRequestException,
   HttpException,
 } from '@nestjs/common';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { FilesInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { HousesService } from './houses.service';
 import { CreateHouseDto } from './dto/create-house.dto';
@@ -38,7 +38,13 @@ export class HousesController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
-  @UseInterceptors(FilesInterceptor('images', 5))
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'images', maxCount: 5 },
+      { name: 'proofOfAddress', maxCount: 1 },
+      { name: 'taggedPhotos', maxCount: 8 },
+    ]),
+  )
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Create a new property listing' })
   @ApiConsumes('multipart/form-data')
@@ -95,16 +101,21 @@ export class HousesController {
   async create(
     @CurrentUser() user: RequestUser,
     @Body() body: any,
-    @UploadedFiles() files?: Express.Multer.File[],
+    @UploadedFiles() files?: { images?: Express.Multer.File[]; proofOfAddress?: Express.Multer.File[]; taggedPhotos?: Express.Multer.File[] },
   ) {
     // Log received data for debugging
+    const imageFiles = files?.images || [];
+    const proofFile = files?.proofOfAddress?.[0];
+    const taggedPhotoFiles = files?.taggedPhotos || [];
     console.log('Received house creation request:', {
       title: body.title,
       description: body.description?.substring(0, 50) + '...',
       price: body.price,
       location: body.location,
       type: body.type,
-      filesCount: files?.length || 0,
+      filesCount: imageFiles.length,
+      taggedPhotosCount: taggedPhotoFiles.length,
+      hasProofOfAddress: !!proofFile,
       hasCoordinates: !!(body.coordinates || (body.lat && body.lng)),
     });
     // Parse form data fields (they come as strings in multipart/form-data)
@@ -137,6 +148,7 @@ export class HousesController {
       totalSlots: body.totalSlots ? Number(body.totalSlots) : undefined,
       viewingFee: body.viewingFee ? Number(body.viewingFee) : undefined,
       listingType: body.listingType || 'buy',
+      isAirbnb: body.isAirbnb === 'true' || body.isAirbnb === true,
     };
 
     // Parse coordinates if provided
@@ -163,16 +175,51 @@ export class HousesController {
     }
 
     let imageUrls: string[] = [];
+    let proofOfAddressUrl: string | undefined;
 
-    // Upload files to Cloudinary if provided
-    if (files && files.length > 0) {
+    // Upload proof of address if provided
+    if (proofFile) {
+      // Validate proof of address file
+      const maxSize = 10 * 1024 * 1024; // 10MB for documents
+      const allowedTypes = [
+        'application/pdf',
+        'image/jpeg',
+        'image/png',
+        'image/jpg',
+      ];
+
+      if (!allowedTypes.includes(proofFile.mimetype)) {
+        throw new BadRequestException(
+          'Proof of address must be a PDF or image file (JPG, PNG)',
+        );
+      }
+      if (proofFile.size > maxSize) {
+        throw new BadRequestException(
+          `Proof of address file exceeds the maximum size of 10MB`,
+        );
+      }
+
+      proofOfAddressUrl = await this.cloudinaryService.uploadToCloudinary(
+        proofFile.buffer,
+        proofFile.originalname,
+      );
+    }
+
+    // Upload image files to Cloudinary if provided
+    if (imageFiles && imageFiles.length > 0) {
       // Log each file's metadata for debugging
-      files.forEach((file, idx) => {
+      imageFiles.forEach((file, idx) => {
         console.log(`Received file[${idx}]: name=${file.originalname}, mimetype=${file.mimetype}, size=${file.size}`);
       });
 
-      if (files.length < 3 || files.length > 5) {
+      if (imageFiles.length < 3 || imageFiles.length > 5) {
         throw new BadRequestException('You must upload between 3 and 5 images');
+      }
+
+      // Validate tagged photos if provided (max 8)
+      const taggedPhotoFiles = files?.taggedPhotos || [];
+      if (taggedPhotoFiles.length > 8) {
+        throw new BadRequestException('You can upload a maximum of 8 tagged photos');
       }
 
       // Additional safety: ensure all files are images and within size
@@ -180,7 +227,7 @@ export class HousesController {
       const allowedPrefix = /^image\//i;
       const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/pjpeg', 'image/x-png'];
 
-      for (const file of files) {
+      for (const file of imageFiles) {
         if (!file.mimetype || !allowedPrefix.test(file.mimetype)) {
           throw new BadRequestException(`Invalid file type: ${file.mimetype || 'unknown'}. Only image/* uploads are allowed.`);
         }
@@ -193,7 +240,7 @@ export class HousesController {
         }
       }
 
-      const uploadPromises = files.map((file) =>
+      const uploadPromises = imageFiles.map((file) =>
         this.cloudinaryService.uploadToCloudinary(
           file.buffer,
           file.originalname,
@@ -207,10 +254,46 @@ export class HousesController {
         : body.images.split(',').map((url: string) => url.trim()).filter(Boolean);
     }
 
+    // Upload tagged photos if provided
+    let taggedPhotos: Array<{ url: string; tag: string; description?: string }> | undefined;
+    if (taggedPhotoFiles.length > 0) {
+      // Parse tags and descriptions from body
+      const tags = body.taggedPhotoTags ? (typeof body.taggedPhotoTags === 'string' ? JSON.parse(body.taggedPhotoTags) : body.taggedPhotoTags) : [];
+      const descriptions = body.taggedPhotoDescriptions ? (typeof body.taggedPhotoDescriptions === 'string' ? JSON.parse(body.taggedPhotoDescriptions) : body.taggedPhotoDescriptions) : [];
+
+      // Upload tagged photos
+      const taggedPhotoUploadPromises = taggedPhotoFiles.map((file) =>
+        this.cloudinaryService.uploadToCloudinary(
+          file.buffer,
+          file.originalname,
+        ),
+      );
+      const taggedPhotoUrls = await Promise.all(taggedPhotoUploadPromises);
+
+      // Combine URLs with tags and descriptions
+      taggedPhotos = taggedPhotoUrls.map((url, index) => ({
+        url,
+        tag: tags[index] || 'other',
+        description: descriptions[index] || undefined,
+      }));
+    } else if (body.taggedPhotos) {
+      // Fallback: if taggedPhotos provided as JSON (for API calls)
+      try {
+        const parsed = typeof body.taggedPhotos === 'string' ? JSON.parse(body.taggedPhotos) : body.taggedPhotos;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          taggedPhotos = parsed;
+        }
+      } catch (error) {
+        // Invalid JSON, skip tagged photos
+      }
+    }
+
     try {
       return await this.housesService.create(user.sub, {
         ...dto,
         images: imageUrls,
+        proofOfAddress: proofOfAddressUrl,
+        taggedPhotos,
       });
     } catch (error: any) {
       console.error('Error creating house:', error);
