@@ -40,9 +40,9 @@ export class HousesController {
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(
     FileFieldsInterceptor([
-      { name: 'images', maxCount: 5 },
+      { name: 'images', maxCount: 8 }, // optional legacy images
       { name: 'proofOfAddress', maxCount: 1 },
-      { name: 'taggedPhotos', maxCount: 8 },
+      { name: 'taggedPhotos', maxCount: 8 }, // primary channel
     ]),
   )
   @ApiBearerAuth('access-token')
@@ -205,21 +205,36 @@ export class HousesController {
       );
     }
 
-    // Upload image files to Cloudinary if provided
+    // Validate tagged photos count (primary channel)
+    if (taggedPhotoFiles.length > 8) {
+      throw new BadRequestException('You can upload a maximum of 8 tagged photos');
+    }
+
+    // Require at least 3 tagged photos (primary channel)
+    let taggedPhotosCount = taggedPhotoFiles.length;
+    if (taggedPhotosCount === 0 && body.taggedPhotos) {
+      try {
+        const parsed = typeof body.taggedPhotos === 'string' ? JSON.parse(body.taggedPhotos) : body.taggedPhotos;
+        if (Array.isArray(parsed)) {
+          taggedPhotosCount = parsed.length;
+        }
+      } catch {
+        // ignore parse error here; will be handled later if needed
+      }
+    }
+    if (taggedPhotosCount < 3) {
+      throw new BadRequestException('Please upload at least 3 tagged photos (up to 8).');
+    }
+
+    // Upload image files to Cloudinary if provided (legacy)
     if (imageFiles && imageFiles.length > 0) {
       // Log each file's metadata for debugging
       imageFiles.forEach((file, idx) => {
         console.log(`Received file[${idx}]: name=${file.originalname}, mimetype=${file.mimetype}, size=${file.size}`);
       });
 
-      if (imageFiles.length < 3 || imageFiles.length > 5) {
-        throw new BadRequestException('You must upload between 3 and 5 images');
-      }
-
-      // Validate tagged photos if provided (max 8)
-      const taggedPhotoFiles = files?.taggedPhotos || [];
-      if (taggedPhotoFiles.length > 8) {
-        throw new BadRequestException('You can upload a maximum of 8 tagged photos');
+      if (imageFiles.length > 8) {
+        throw new BadRequestException('You can upload a maximum of 8 images');
       }
 
       // Additional safety: ensure all files are images and within size
@@ -286,6 +301,11 @@ export class HousesController {
       } catch (error) {
         // Invalid JSON, skip tagged photos
       }
+    }
+
+    // If no legacy images were provided, derive the main images from tagged photos
+    if ((!imageUrls || imageUrls.length === 0) && taggedPhotos && taggedPhotos.length > 0) {
+      imageUrls = taggedPhotos.map((p) => p.url);
     }
 
     try {
