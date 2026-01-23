@@ -251,6 +251,15 @@ export class AdminController {
     return { success: true, message: 'Verification reminder sent' };
   }
 
+  @Patch('properties/:propertyId/verify-address')
+  @ApiOperation({ summary: "Mark a property's address as verified (admin only)" })
+  @ApiParam({ name: 'propertyId', description: 'Property ID', example: '64a1f2e9c...' })
+  @ApiResponse({ status: 200, description: 'Property address marked as verified' })
+  async verifyPropertyAddress(@CurrentUser() user: RequestUser, @Param('propertyId') propertyId: string) {
+    this.ensureAdmin(user);
+    return this.housesService.verifyPropertyAddress(propertyId);
+  }
+
   // ============ PENDING DISBURSEMENTS ============
 
   @Get('disbursements/pending')

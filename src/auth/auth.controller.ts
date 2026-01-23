@@ -4,10 +4,15 @@ import {
   Get,
   Post,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
+import { RegisterCompanyDto } from './dto/register-company.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -49,6 +54,43 @@ export class AuthController {
   @ApiResponse({ status: 409, description: 'Conflict - user already exists' })
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
+  }
+
+  @Post('register-company')
+  @UseInterceptors(FileInterceptor('cacDocument'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Register a new real estate company' })
+  @ApiResponse({
+    status: 201,
+    description: 'Company registration submitted for verification',
+    schema: {
+      example: {
+        message: 'Company registration submitted. Your account is pending verification.',
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - validation error' })
+  @ApiResponse({ status: 409, description: 'Conflict - user already exists' })
+  async registerCompany(
+    @Body('data') dataString: string,
+    @UploadedFile() cacDocument: Express.Multer.File,
+  ) {
+    if (!dataString) {
+      throw new BadRequestException('Registration data is required');
+    }
+    
+    if (!cacDocument) {
+      throw new BadRequestException('CAC document is required');
+    }
+    
+    let dto: RegisterCompanyDto;
+    try {
+      dto = JSON.parse(dataString);
+    } catch {
+      throw new BadRequestException('Invalid registration data format');
+    }
+    
+    return this.authService.registerCompany(dto, cacDocument);
   }
 
   @Post('login')

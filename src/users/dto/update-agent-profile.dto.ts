@@ -20,6 +20,28 @@ class BankAccountDto {
   bankCode: string;
 }
 
+class CompanyDetailsDto {
+  @ApiProperty({ example: 'Acme Estates Ltd', required: false })
+  @IsString()
+  @IsOptional()
+  companyName?: string;
+
+  @ApiProperty({ example: 'RC123456', required: false })
+  @IsString()
+  @IsOptional()
+  cacNumber?: string;
+
+  @ApiProperty({ example: 'info@acme.com', required: false })
+  @IsString()
+  @IsOptional()
+  businessEmail?: string;
+
+  @ApiProperty({ example: 'https://res.cloudinary.com/.../cac.pdf', required: false })
+  @IsString()
+  @IsOptional()
+  cacDocumentUrl?: string;
+}
+
 export class UpdateAgentProfileDto {
   @ApiProperty({ example: 'Eliezer James', required: false })
   @IsString()
@@ -80,5 +102,16 @@ export class UpdateAgentProfileDto {
   @IsString()
   @IsOptional()
   suspensionReason?: string;
+
+  @ApiProperty({ type: CompanyDetailsDto, required: false })
+  @ValidateNested()
+  @Type(() => CompanyDetailsDto)
+  @IsOptional()
+  companyDetails?: CompanyDetailsDto;
+
+  @ApiProperty({ example: 'pending', required: false, enum: ['pending', 'approved', 'rejected'] })
+  @IsString()
+  @IsOptional()
+  companyVerificationStatus?: 'pending' | 'approved' | 'rejected';
 }
 

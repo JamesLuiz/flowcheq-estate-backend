@@ -6,6 +6,7 @@ export enum UserRole {
   Landlord = 'landlord',
   User = 'user',
   Admin = 'admin',
+  Company = 'company', // Real Estate Company
 }
 
 @Schema({
@@ -103,6 +104,31 @@ export class User {
 
   @Prop()
   suspensionReason?: string;
+
+  // Real Estate Company specific fields
+  @Prop({ type: Object })
+  companyDetails?: {
+    companyName: string;
+    cacNumber: string; // CAC Registration Number
+    cacDocumentUrl?: string; // URL to uploaded CAC certificate
+    businessEmail: string;
+    businessPhone: string;
+    address: string;
+    city: string;
+    state: string;
+    website?: string;
+    yearEstablished?: number;
+    companySize?: string; // e.g., '1-10', '11-50', '51-200', '200+'
+  };
+
+  @Prop({ default: false })
+  companyVerified?: boolean; // Separate verification for company documents
+
+  @Prop()
+  companyVerificationStatus?: 'pending' | 'approved' | 'rejected';
+
+  @Prop()
+  companyRejectionReason?: string;
 }
 
 export type UserDocument = HydratedDocument<User>;

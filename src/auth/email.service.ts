@@ -67,6 +67,40 @@ export class EmailService {
     }
   }
 
+  async sendEmail(options: { to: string; subject: string; text?: string; html?: string; from?: string }) {
+    const fromEmail =
+      options.from ||
+      this.configService.get<string>('SMTP_FROM') ||
+      this.configService.get<string>('SMTP_USER') ||
+      'noreply@houseme.com';
+
+    const mailOptions: any = {
+      from: `"House Me" <${fromEmail}>`,
+      to: options.to,
+      subject: options.subject,
+    };
+
+    if (options.html) mailOptions.html = options.html;
+    if (options.text) mailOptions.text = options.text;
+
+    if (!this.transporter) {
+      this.logger.warn(`Email sending is disabled. Would send email to: ${options.to}`);
+      this.logger.log(`Subject: ${options.subject}`);
+      if (options.text) this.logger.log(`Text: ${options.text}`);
+      if (options.html) this.logger.log(`HTML provided`);
+      return { success: false };
+    }
+
+    try {
+      const info = await this.transporter.sendMail(mailOptions);
+      this.logger.log(`Email sent to: ${options.to} (MessageId: ${info.messageId})`);
+      return { success: true, messageId: info.messageId };
+    } catch (error: any) {
+      this.logger.error(`Failed to send email to ${options.to}:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
   async sendPasswordResetEmail(email: string, resetToken: string, name?: string) {
     const resetUrl = `${this.frontendUrl}/reset-password?token=${resetToken}`;
     const fromEmail =

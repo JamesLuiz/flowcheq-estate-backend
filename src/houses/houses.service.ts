@@ -771,6 +771,21 @@ export class HousesService {
     return this.toHouseResponse(house);
   }
 
+  /**
+   * Mark a property's address as verified (admin action).
+   */
+  async verifyPropertyAddress(propertyId: string) {
+    const house = await this.houseModel.findById(propertyId);
+    if (!house) {
+      throw new NotFoundException('Property not found');
+    }
+
+    house.addressVerified = true;
+    await house.save();
+
+    return this.toHouseResponse(house);
+  }
+
   async delistAgentProperties(agentId: string) {
     await this.houseModel.updateMany(
       { agentId: new Types.ObjectId(agentId), deleted: { $ne: true } },

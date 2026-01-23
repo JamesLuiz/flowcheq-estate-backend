@@ -11,6 +11,7 @@ import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { UsersService } from '../users/users.service';
 import { RegisterDto } from './dto/register.dto';
+import { RegisterCompanyDto } from './dto/register-company.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -19,6 +20,7 @@ import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { EmailService } from './email.service';
 import { FlutterwaveService } from '../promotions/flutterwave.service';
+import { CloudinaryService } from '../houses/cloudinary.service';
 
 @Injectable()
 export class AuthService {
@@ -28,6 +30,8 @@ export class AuthService {
     private readonly emailService: EmailService,
     @Inject(forwardRef(() => FlutterwaveService))
     private readonly flutterwaveService: FlutterwaveService,
+    @Inject(forwardRef(() => CloudinaryService))
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -63,6 +67,51 @@ export class AuthService {
     }
 
     return this.buildAuthResponse(user);
+  }
+
+  async registerCompany(dto: RegisterCompanyDto, cacDocument: Express.Multer.File) {
+    // Upload CAC document to Cloudinary - use buffer + filename and a companies folder
+    const uploadResult = await this.cloudinaryService.uploadToCloudinaryWithPublicId(
+      cacDocument.buffer,
+      cacDocument.originalname,
+      'nestin-estate/companies',
+    );
+    const cacDocumentUrl = uploadResult.url;
+    
+    const payload: CreateUserDto = {
+      name: dto.name,
+      email: dto.email,
+      password: await this.hashPassword(dto.password),
+      phone: dto.phone,
+      bio: dto.bio,
+      role: UserRole.Company,
+    };
+
+    const user = await this.usersService.create(payload);
+    
+    // Update with company details
+    await this.usersService.updateAgentProfile(user._id.toString(), {
+      companyDetails: {
+        ...dto.companyDetails,
+        cacDocumentUrl,
+      },
+      companyVerificationStatus: 'pending',
+    });
+
+    // Send notification email to admin
+    try {
+      await this.emailService.sendEmail({
+        to: process.env.ADMIN_EMAIL || 'housemedream@gmail.com',
+        subject: 'New Company Registration - Verification Required',
+        text: `A new real estate company has registered and requires verification.\n\nCompany: ${dto.companyDetails.companyName}\nCAC Number: ${dto.companyDetails.cacNumber}\nBusiness Email: ${dto.companyDetails.businessEmail}\n\nPlease review the CAC document and verify the company.`,
+      });
+    } catch (error) {
+      console.error('Failed to send admin notification:', error);
+    }
+
+    return {
+      message: 'Company registration submitted. Your account is pending verification. You will receive an email once approved.',
+    };
   }
 
   async login(dto: LoginDto) {
