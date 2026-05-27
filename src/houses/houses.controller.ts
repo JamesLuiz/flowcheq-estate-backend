@@ -20,15 +20,25 @@ import {
 import { FilesInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { HousesService } from './houses.service';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateHouseDto } from './dto/create-house.dto';
 import { UpdateHouseDto } from './dto/update-house.dto';
 import { FilterHousesDto } from './dto/filter-houses.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { type RequestUser } from '../auth/decorators/current-user.decorator';
 import { CloudinaryService } from './cloudinary.service';
+import { UserRole } from '../users/schemas/user.schema';
+import { parseOwnershipDocTypes } from './listing-validation.util';
+import {
+  GPS_PHOTO_MAX,
+  GPS_PHOTO_MIN,
+  OwnershipDocumentType,
+} from '../common/listing-requirements';
 
-@Controller('houses')
+@Controller(['houses', 'properties'])
 @ApiTags('Houses')
 export class HousesController {
   constructor(
@@ -37,12 +47,14 @@ export class HousesController {
   ) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Landlord, UserRole.RealEstateCompany, UserRole.Company)
   @UseInterceptors(
     FileFieldsInterceptor([
-      { name: 'images', maxCount: 8 }, // optional legacy images
+      { name: 'images', maxCount: 8 },
       { name: 'proofOfAddress', maxCount: 1 },
-      { name: 'taggedPhotos', maxCount: 8 }, // primary channel
+      { name: 'ownershipDocuments', maxCount: 4 },
+      { name: 'taggedPhotos', maxCount: 6 },
     ]),
   )
   @ApiBearerAuth('access-token')
@@ -101,11 +113,16 @@ export class HousesController {
   async create(
     @CurrentUser() user: RequestUser,
     @Body() body: any,
-    @UploadedFiles() files?: { images?: Express.Multer.File[]; proofOfAddress?: Express.Multer.File[]; taggedPhotos?: Express.Multer.File[] },
+    @UploadedFiles() files?: {
+      images?: Express.Multer.File[];
+      proofOfAddress?: Express.Multer.File[];
+      ownershipDocuments?: Express.Multer.File[];
+      taggedPhotos?: Express.Multer.File[];
+    },
   ) {
-    // Log received data for debugging
     const imageFiles = files?.images || [];
     const proofFile = files?.proofOfAddress?.[0];
+    const ownershipDocFiles = files?.ownershipDocuments || [];
     const taggedPhotoFiles = files?.taggedPhotos || [];
     console.log('Received house creation request:', {
       title: body.title,
@@ -205,12 +222,10 @@ export class HousesController {
       );
     }
 
-    // Validate tagged photos count (primary channel)
-    if (taggedPhotoFiles.length > 8) {
-      throw new BadRequestException('You can upload a maximum of 8 tagged photos');
+    if (taggedPhotoFiles.length > GPS_PHOTO_MAX) {
+      throw new BadRequestException(`Maximum ${GPS_PHOTO_MAX} GPS photos allowed`);
     }
 
-    // Require at least 3 tagged photos (primary channel)
     let taggedPhotosCount = taggedPhotoFiles.length;
     if (taggedPhotosCount === 0 && body.taggedPhotos) {
       try {
@@ -219,11 +234,20 @@ export class HousesController {
           taggedPhotosCount = parsed.length;
         }
       } catch {
-        // ignore parse error here; will be handled later if needed
+        // ignore
       }
     }
-    if (taggedPhotosCount < 3) {
-      throw new BadRequestException('Please upload at least 3 tagged photos (up to 8).');
+    if (taggedPhotosCount < GPS_PHOTO_MIN || taggedPhotosCount > GPS_PHOTO_MAX) {
+      throw new BadRequestException(
+        `Please provide ${GPS_PHOTO_MIN}–${GPS_PHOTO_MAX} GPS-verified property photos.`,
+      );
+    }
+
+    const ownershipDocTypes = parseOwnershipDocTypes(body.ownershipDocTypes);
+    if (ownershipDocFiles.length !== ownershipDocTypes.length) {
+      throw new BadRequestException(
+        'Each ownership document file must have a matching type in ownershipDocTypes JSON array.',
+      );
     }
 
     // Upload image files to Cloudinary if provided (legacy)
@@ -269,28 +293,85 @@ export class HousesController {
         : body.images.split(',').map((url: string) => url.trim()).filter(Boolean);
     }
 
-    // Upload tagged photos if provided
-    let taggedPhotos: Array<{ url: string; tag: string; description?: string }> | undefined;
-    if (taggedPhotoFiles.length > 0) {
-      // Parse tags and descriptions from body
-      const tags = body.taggedPhotoTags ? (typeof body.taggedPhotoTags === 'string' ? JSON.parse(body.taggedPhotoTags) : body.taggedPhotoTags) : [];
-      const descriptions = body.taggedPhotoDescriptions ? (typeof body.taggedPhotoDescriptions === 'string' ? JSON.parse(body.taggedPhotoDescriptions) : body.taggedPhotoDescriptions) : [];
+    let ownershipDocuments: Array<{ type: string; url: string; uploadedAt: Date }> = [];
+    if (ownershipDocFiles.length > 0) {
+      const maxDocSize = 10 * 1024 * 1024;
+      const allowedDocTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+      for (let i = 0; i < ownershipDocFiles.length; i++) {
+        const file = ownershipDocFiles[i];
+        if (!allowedDocTypes.includes(file.mimetype)) {
+          throw new BadRequestException('Ownership documents must be PDF or image files');
+        }
+        if (file.size > maxDocSize) {
+          throw new BadRequestException('Ownership document exceeds 10MB');
+        }
+        const url = await this.cloudinaryService.uploadToCloudinary(file.buffer, file.originalname);
+        ownershipDocuments.push({
+          type: ownershipDocTypes[i],
+          url,
+          uploadedAt: new Date(),
+        });
+      }
+    } else if (proofOfAddressUrl) {
+      const fallbackType =
+        dto.listingType === 'rent'
+          ? OwnershipDocumentType.UtilityBill
+          : OwnershipDocumentType.COfO;
+      ownershipDocuments.push({ type: fallbackType, url: proofOfAddressUrl, uploadedAt: new Date() });
+    }
 
-      // Upload tagged photos
+    let taggedPhotos:
+      | Array<{
+          url: string;
+          tag: string;
+          description?: string;
+          lat?: number;
+          lng?: number;
+          accuracy?: number;
+          capturedAt?: Date;
+          gpsVerified?: boolean;
+        }>
+      | undefined;
+    if (taggedPhotoFiles.length > 0) {
+      const tags = body.taggedPhotoTags
+        ? typeof body.taggedPhotoTags === 'string'
+          ? JSON.parse(body.taggedPhotoTags)
+          : body.taggedPhotoTags
+        : [];
+      const descriptions = body.taggedPhotoDescriptions
+        ? typeof body.taggedPhotoDescriptions === 'string'
+          ? JSON.parse(body.taggedPhotoDescriptions)
+          : body.taggedPhotoDescriptions
+        : [];
+      let gpsMeta: Array<{ lat?: number; lng?: number; accuracy?: number; capturedAt?: string }> = [];
+      if (body.taggedPhotoGps) {
+        try {
+          gpsMeta =
+            typeof body.taggedPhotoGps === 'string' ? JSON.parse(body.taggedPhotoGps) : body.taggedPhotoGps;
+        } catch {
+          throw new BadRequestException('Invalid taggedPhotoGps JSON');
+        }
+      }
+
       const taggedPhotoUploadPromises = taggedPhotoFiles.map((file) =>
-        this.cloudinaryService.uploadToCloudinary(
-          file.buffer,
-          file.originalname,
-        ),
+        this.cloudinaryService.uploadToCloudinary(file.buffer, file.originalname),
       );
       const taggedPhotoUrls = await Promise.all(taggedPhotoUploadPromises);
 
-      // Combine URLs with tags and descriptions
-      taggedPhotos = taggedPhotoUrls.map((url, index) => ({
-        url,
-        tag: tags[index] || 'other',
-        description: descriptions[index] || undefined,
-      }));
+      taggedPhotos = taggedPhotoUrls.map((url, index) => {
+        const gps = gpsMeta[index];
+        const hasGps = gps?.lat != null && gps?.lng != null;
+        return {
+          url,
+          tag: tags[index] || 'other',
+          description: descriptions[index] || undefined,
+          lat: gps?.lat,
+          lng: gps?.lng,
+          accuracy: gps?.accuracy,
+          capturedAt: gps?.capturedAt ? new Date(gps.capturedAt) : new Date(),
+          gpsVerified: hasGps,
+        };
+      });
     } else if (body.taggedPhotos) {
       // Fallback: if taggedPhotos provided as JSON (for API calls)
       try {
@@ -313,6 +394,7 @@ export class HousesController {
         ...dto,
         images: imageUrls,
         proofOfAddress: proofOfAddressUrl,
+        ownershipDocuments: ownershipDocuments as CreateHouseDto['ownershipDocuments'],
         taggedPhotos,
       });
     } catch (error: any) {
@@ -329,8 +411,81 @@ export class HousesController {
     }
   }
 
+  @Post('check-duplicate')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('landlord', 'real_estate_company')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Check if coordinates already have a listing nearby',
+    description:
+      'Uses a small default radius (~50m). Returns whether any listing exists in that area and optional match summaries.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        lat: { type: 'number', example: 6.5244 },
+        lng: { type: 'number', example: 3.3792 },
+        radiusKm: {
+          type: 'number',
+          example: 0.05,
+          description: 'Optional radius in km (default 0.05 ≈ 50m)',
+        },
+      },
+      required: ['lat', 'lng'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Duplicate check result',
+    schema: {
+      example: {
+        duplicate: false,
+        matches: [],
+      },
+    },
+  })
+  checkDuplicate(
+    @CurrentUser() _user: RequestUser,
+    @Body() body: { lat: number; lng: number; radiusKm?: number },
+  ) {
+    return this.housesService.checkDuplicateCoordinates(
+      body.lat,
+      body.lng,
+      body.radiusKm ?? 0.05,
+    );
+  }
+
   @Get()
-  @ApiOperation({ summary: 'Get all property listings with optional filters' })
+  @ApiOperation({
+    summary: 'Get all property listings with optional filters',
+    description:
+      'Supports text/price/type filters. With `lat`, `lng`, and optional `radius` (km, default 10), returns only listings within that radius, sorted by distance. Use `amenities` as comma-separated slugs (e.g. wifi,parking) — listings must include all requested amenities.',
+  })
+  @ApiQuery({
+    name: 'amenities',
+    required: false,
+    description: 'Comma-separated amenity slugs; listing must include all (e.g. wifi,parking)',
+    example: 'wifi,parking',
+  })
+  @ApiQuery({
+    name: 'lat',
+    required: false,
+    description: 'Latitude for radius filter (use with lng)',
+    example: 6.5244,
+  })
+  @ApiQuery({
+    name: 'lng',
+    required: false,
+    description: 'Longitude for radius filter (use with lat)',
+    example: 3.3792,
+  })
+  @ApiQuery({
+    name: 'radius',
+    required: false,
+    description: 'Radius in km when lat/lng are set (default 10)',
+    example: 5,
+  })
   @ApiResponse({
     status: 200,
     description: 'List of property listings',
@@ -365,6 +520,34 @@ export class HousesController {
   })
   findAll(@Query() filters: FilterHousesDto) {
     return this.housesService.findAll(filters);
+  }
+
+  @Get('stats/me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Get property statistics for the authenticated user' })
+  @ApiResponse({
+    status: 200,
+    description: 'Property statistics',
+    schema: {
+      example: {
+        totalListings: 10,
+        totalViews: 500,
+        inquiries: 50,
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  getStats(@CurrentUser() user: RequestUser) {
+    return this.housesService.getStats(user.sub);
+  }
+
+  @Get('my')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: "Owner's own listings (all statuses)" })
+  myListings(@CurrentUser() user: RequestUser) {
+    return this.housesService.findByAgent(user.sub);
   }
 
   @Get(':id')
@@ -408,21 +591,11 @@ export class HousesController {
   }
 
   @Post(':id/view')
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Track a view on a property listing' })
   @ApiParam({ name: 'id', description: 'Property ID', example: '64a1f2e9c...' })
-  @ApiResponse({
-    status: 200,
-    description: 'View tracked successfully',
-    schema: {
-      example: {
-        _id: '64a1f2e9c...',
-        viewCount: 11,
-      },
-    },
-  })
-  @ApiResponse({ status: 404, description: 'Property not found' })
-  trackView(@Param('id') id: string) {
-    return this.housesService.trackView(id);
+  trackView(@Param('id') id: string, @CurrentUser() user?: RequestUser) {
+    return this.housesService.trackView(id, user?.sub);
   }
 
   @Post(':id/whatsapp-click')
@@ -441,6 +614,88 @@ export class HousesController {
   @ApiResponse({ status: 404, description: 'Property not found' })
   trackWhatsAppClick(@Param('id') id: string) {
     return this.housesService.trackWhatsAppClick(id);
+  }
+
+  @Post(':id/photos/gps-capture')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.Landlord, UserRole.RealEstateCompany, UserRole.Company)
+  @UseInterceptors(FileFieldsInterceptor([{ name: 'taggedPhotos', maxCount: GPS_PHOTO_MAX }]))
+  @ApiBearerAuth('access-token')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload GPS-captured photos for an existing listing (Nestin Capture)' })
+  async uploadGpsCapturedPhotos(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Body() body: Record<string, unknown>,
+    @UploadedFiles() files?: { taggedPhotos?: Express.Multer.File[] },
+  ) {
+    const taggedPhotoFiles = files?.taggedPhotos ?? [];
+    if (taggedPhotoFiles.length < GPS_PHOTO_MIN || taggedPhotoFiles.length > GPS_PHOTO_MAX) {
+      throw new BadRequestException(
+        `Provide ${GPS_PHOTO_MIN}–${GPS_PHOTO_MAX} GPS-captured photos.`,
+      );
+    }
+
+    const tags = body.taggedPhotoTags
+      ? typeof body.taggedPhotoTags === 'string'
+        ? JSON.parse(body.taggedPhotoTags as string)
+        : body.taggedPhotoTags
+      : [];
+    const descriptions = body.taggedPhotoDescriptions
+      ? typeof body.taggedPhotoDescriptions === 'string'
+        ? JSON.parse(body.taggedPhotoDescriptions as string)
+        : body.taggedPhotoDescriptions
+      : [];
+    let gpsMeta: Array<{ lat?: number; lng?: number; accuracy?: number; capturedAt?: string }> =
+      [];
+    if (body.taggedPhotoGps) {
+      try {
+        gpsMeta =
+          typeof body.taggedPhotoGps === 'string'
+            ? JSON.parse(body.taggedPhotoGps as string)
+            : (body.taggedPhotoGps as typeof gpsMeta);
+      } catch {
+        throw new BadRequestException('Invalid taggedPhotoGps JSON');
+      }
+    }
+
+    const allowedImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    const maxSize = 5 * 1024 * 1024;
+
+    const taggedPhotos = await Promise.all(
+      taggedPhotoFiles.map(async (file, index) => {
+        if (!allowedImageTypes.includes(file.mimetype)) {
+          throw new BadRequestException('Photos must be JPEG, PNG, or WebP');
+        }
+        if (file.size > maxSize) {
+          throw new BadRequestException('Each photo must be under 5MB');
+        }
+        const gps = gpsMeta[index];
+        const hasGps =
+          gps?.lat != null && gps?.lng != null && !Number.isNaN(gps.lat) && !Number.isNaN(gps.lng);
+        if (!hasGps) {
+          throw new BadRequestException(
+            `Photo ${index + 1} must include GPS coordinates from Nestin Capture.`,
+          );
+        }
+        const url = await this.cloudinaryService.uploadToCloudinary(
+          file.buffer,
+          file.originalname,
+        );
+        return {
+          url,
+          tag: (Array.isArray(tags) ? tags[index] : undefined) || 'other',
+          description: Array.isArray(descriptions) ? descriptions[index] : undefined,
+          lat: gps.lat,
+          lng: gps.lng,
+          accuracy: gps.accuracy,
+          capturedAt: gps.capturedAt ? new Date(gps.capturedAt) : new Date(),
+          gpsVerified: true,
+        };
+      }),
+    );
+
+    return this.housesService.replaceGpsCapturedPhotos(id, user.sub, taggedPhotos);
   }
 
   @Put(':id')
@@ -496,25 +751,50 @@ export class HousesController {
     return this.housesService.remove(id, user.sub);
   }
 
-  @Get('stats/me')
+  @Post(':id/pause')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Get property statistics for the authenticated user' })
-  @ApiResponse({
-    status: 200,
-    description: 'Property statistics',
-    schema: {
-      example: {
-        totalListings: 10,
-        totalViews: 500,
-        totalWhatsAppClicks: 50,
-        featuredListings: 2,
-      },
-    },
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  getStats(@CurrentUser() user: RequestUser) {
-    return this.housesService.getStats(user.sub);
+  @ApiOperation({ summary: 'Temporarily hide listing' })
+  pause(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.housesService.pauseListing(id, user.sub);
+  }
+
+  @Post(':id/activate')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Re-activate paused listing' })
+  activate(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.housesService.activateListing(id, user.sub);
+  }
+
+  @Post(':id/mark-rented')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Mark property as rented' })
+  markRented(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.housesService.markRented(id, user.sub);
+  }
+
+  @Post(':id/enquire')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Register an enquiry' })
+  enquire(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.housesService.registerEnquiry(id, user.sub);
+  }
+
+  @Get(':id/contact')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Reveal owner contact post-enquiry' })
+  contact(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.housesService.revealContact(id, user.sub);
+  }
+
+  @Get(':id/price-comparison')
+  @ApiOperation({ summary: 'Area median comparison for this listing' })
+  priceComparison(@Param('id') id: string) {
+    return this.housesService.getPriceComparison(id);
   }
 
   @Post(':id/slots/book')
@@ -594,7 +874,7 @@ export class HousesController {
   @Patch(':id/viewing-fee')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Update viewing fee for a property (owner only)' })
+  @ApiOperation({ summary: 'Update inspection fee for a property (owner only)' })
   @ApiParam({ name: 'id', description: 'Property ID', example: '64a1f2e9c...' })
   @ApiBody({
     schema: {
@@ -604,7 +884,7 @@ export class HousesController {
           type: 'number',
           minimum: 0,
           example: 5000,
-          description: 'Viewing fee in Naira (0 to remove viewing fee)',
+          description: 'Inspection fee in Naira (0 to remove inspection fee)',
         },
       },
       required: ['viewingFee'],
@@ -612,7 +892,7 @@ export class HousesController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Viewing fee updated successfully',
+    description: 'Inspection fee updated successfully',
     schema: {
       example: {
         _id: '64a1f2e9c...',
@@ -630,7 +910,7 @@ export class HousesController {
     @Body() body: { viewingFee: number },
   ) {
     if (body.viewingFee < 0) {
-      throw new BadRequestException('Viewing fee cannot be negative');
+      throw new BadRequestException('Inspection fee cannot be negative');
     }
 
     return this.housesService.updateViewingFee(id, user.sub, body.viewingFee);

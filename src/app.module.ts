@@ -13,6 +13,17 @@ import { VerificationsModule } from './verifications/verifications.module';
 import { PromotionsModule } from './promotions/promotions.module';
 import { ViewingsModule } from './viewings/viewings.module';
 import { MessagesModule } from './messages/messages.module';
+import { LandlordsModule } from './landlords/landlords.module';
+import { PropertiesModule } from './properties/properties.module';
+import { FieldVerifiersModule } from './field-verifiers/field-verifiers.module';
+import { VerificationModule } from './verification/verification.module';
+import { AreaRentIndexModule } from './area-rent-index/area-rent-index.module';
+import { RnplModule } from './rnpl/rnpl.module';
+import { LegalDocumentsModule } from './legal-documents/legal-documents.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+
+import { PropertyManagementModule } from './property-management/property-management.module';
+import { LocationVerificationModule } from './location-verification/location-verification.module';
 
 @Module({
   imports: [
@@ -37,6 +48,16 @@ import { MessagesModule } from './messages/messages.module';
     PromotionsModule,
     ViewingsModule,
     MessagesModule,
+    LandlordsModule,
+    PropertiesModule,
+    FieldVerifiersModule,
+    VerificationModule,
+    AreaRentIndexModule,
+    RnplModule,
+    LegalDocumentsModule,
+    SubscriptionsModule,
+    PropertyManagementModule,
+    LocationVerificationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

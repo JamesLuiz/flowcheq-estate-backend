@@ -47,7 +47,7 @@ export class ViewingsService {
       throw new NotFoundException('Agent not found');
     }
 
-    // Get viewing fee from house if set
+    // Get inspection fee from house if set
     const viewingFee = (house as any).viewingFee || 0;
 
     const viewing = new this.viewingModel({
@@ -177,7 +177,7 @@ export class ViewingsService {
   }
 
   async getAgentViewings(agentId: string) {
-    // Only show viewings that are paid (if they have a viewing fee) or free viewings
+    // Only show viewings that are paid (if they have an inspection fee) or free viewings
     // Logic: 
     // - Free viewings: viewingFee doesn't exist, is 0, or is null
     // - Paid viewings: viewingFee > 0 AND paymentStatus = 'paid'
@@ -424,14 +424,14 @@ export class ViewingsService {
       throw new ForbiddenException('Not authorized to pay for this viewing');
     }
 
-    // Check if viewing fee is set
+    // Check if inspection fee is set
     if (!viewing.viewingFee || viewing.viewingFee <= 0) {
-      throw new ForbiddenException('No viewing fee set for this property');
+      throw new ForbiddenException('No inspection fee set for this property');
     }
 
     // Check if already paid
     if (viewing.paymentStatus === 'paid') {
-      throw new ForbiddenException('Viewing fee already paid');
+      throw new ForbiddenException('Inspection fee already paid');
     }
 
     const house = viewing.houseId as any;
@@ -516,8 +516,8 @@ export class ViewingsService {
           agentId: agent._id?.toString() || agent.id,
         },
         customizations: {
-          title: 'House Me - Viewing Fee Payment',
-          description: `Property viewing fee payment - ${house.title || 'Property'}`,
+          title: 'House Me - Inspection Fee Payment',
+          description: `Property inspection fee payment - ${house.title || 'Property'}`,
           logo: 'https://house-me.vercel.app/logo.png',
         },
         subaccounts: subaccounts.length > 0 ? subaccounts : undefined,
@@ -680,7 +680,7 @@ export class ViewingsService {
         grossAmount: viewing.viewingFee!,
         platformFee: platformFeePercentage,
         type: 'viewing_fee',
-        description: `Viewing fee for ${house?.title || 'property'}`,
+        description: `Inspection fee for ${house?.title || 'property'}`,
         viewingId: viewing._id?.toString(),
         houseId: houseId,
         propertyTitle: house?.title,
@@ -749,5 +749,64 @@ export class ViewingsService {
       platformFee: obj.platformFee,
       agentAmount: obj.agentAmount,
     };
+  }
+
+  async requestViewing(
+    tenantId: string,
+    payload: {
+      propertyId: string;
+      landlordId: string;
+      preferredDate: string;
+      preferredTime: string;
+      notes?: string;
+    },
+  ) {
+    return this.schedule({
+      houseId: payload.propertyId,
+      agentId: payload.landlordId,
+      userId: tenantId,
+      scheduledDate: payload.preferredDate,
+      scheduledTime: payload.preferredTime,
+      notes: payload.notes,
+    });
+  }
+
+  async getTenantViewings(tenantId: string) {
+    return this.getUserViewings(tenantId);
+  }
+
+  async getLandlordViewings(landlordId: string) {
+    return this.getAgentViewings(landlordId);
+  }
+
+  async confirmViewing(viewingId: string, landlordId: string) {
+    return this.updateStatus(viewingId, landlordId, 'confirmed', false);
+  }
+
+  async declineViewing(viewingId: string, landlordId: string, reason?: string) {
+    const result = await this.updateStatus(viewingId, landlordId, 'cancelled', false);
+    return {
+      ...result,
+      declineReason: reason ?? null,
+    };
+  }
+
+  async cancelViewing(viewingId: string, actorId: string) {
+    const viewing = await this.viewingModel.findById(viewingId).exec();
+    if (!viewing) {
+      throw new NotFoundException('Viewing not found');
+    }
+    const isTenant = viewing.userId?.toString() === actorId;
+    const isLandlord = viewing.agentId?.toString() === actorId;
+    if (!isTenant && !isLandlord) {
+      throw new ForbiddenException('Not authorized to cancel this viewing');
+    }
+    viewing.status = 'cancelled';
+    await viewing.save();
+    return this.toResponse(viewing);
+  }
+
+  async completeViewing(viewingId: string, landlordId: string) {
+    return this.updateStatus(viewingId, landlordId, 'completed', false);
   }
 }

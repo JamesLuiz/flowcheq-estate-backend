@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Message, MessageDocument } from './schemas/message.schema';
@@ -252,6 +252,92 @@ export class MessagesService {
       { $set: { read: true } },
     ).exec();
     return { success: true };
+  }
+
+  private buildThreadId(userA: string, userB: string, houseId?: string) {
+    const [x, y] = [userA, userB].sort();
+    return houseId ? `${x}:${y}:${houseId}` : `${x}:${y}`;
+  }
+
+  async startThread(userId: string, payload: { partnerId: string; houseId?: string }) {
+    const partner = await this.usersService.findById(payload.partnerId);
+    if (!partner) {
+      throw new NotFoundException('Partner not found');
+    }
+    const threadId = this.buildThreadId(userId, payload.partnerId, payload.houseId);
+    const existing = await this.getThreadMessages(userId, threadId);
+    return {
+      threadId,
+      houseId: payload.houseId ?? null,
+      existingMessages: existing.length,
+    };
+  }
+
+  async listThreads(userId: string) {
+    const conversations = await this.getConversations(userId);
+    return {
+      data: conversations.map((c: any) => ({
+        threadId: this.buildThreadId(userId, c.partnerId, c.houseId),
+        partnerId: c.partnerId,
+        partnerName: c.partnerName,
+        partnerRole: c.partnerRole,
+        houseId: c.houseId ?? null,
+        lastMessage: c.lastMessage,
+        lastMessageAt: c.lastMessageAt,
+        unreadCount: c.unreadCount,
+      })),
+    };
+  }
+
+  async getThreadMessages(userId: string, threadId: string) {
+    const [a, b, houseId] = threadId.split(':');
+    const partnerId = a === userId ? b : a;
+    if (!partnerId) return [];
+    return this.getMessages(userId, partnerId, houseId);
+  }
+
+  async sendThreadMessage(
+    userId: string,
+    threadId: string,
+    payload: { content: string },
+  ) {
+    const [a, b, houseId] = threadId.split(':');
+    const partnerId = a === userId ? b : a;
+    if (!partnerId) {
+      throw new BadRequestException('Invalid thread id');
+    }
+    return this.sendMessage(userId, {
+      receiverId: partnerId,
+      content: payload.content,
+      houseId,
+      conversationType: 'tenant-agent',
+    } as SendMessageDto);
+  }
+
+  async deleteOwnMessage(userId: string, threadId: string, messageId: string) {
+    const [a, b] = threadId.split(':');
+    const partnerId = a === userId ? b : a;
+    if (!partnerId) {
+      throw new BadRequestException('Invalid thread id');
+    }
+    const msg = await this.messageModel.findById(messageId);
+    if (!msg) {
+      throw new NotFoundException('Message not found');
+    }
+    if (msg.senderId.toString() !== userId) {
+      throw new ForbiddenException('Only sender can delete message');
+    }
+    await this.messageModel.findByIdAndDelete(messageId);
+    return { success: true };
+  }
+
+  async reportThread(userId: string, threadId: string, reason?: string) {
+    return {
+      success: true,
+      threadId,
+      reportedBy: userId,
+      reason: reason ?? 'No reason provided',
+    };
   }
 
   private toMessageResponse(message: MessageDocument, sender?: any, receiver?: any, currentUserId?: string) {

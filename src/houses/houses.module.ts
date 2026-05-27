@@ -7,12 +7,14 @@ import { UsersModule } from '../users/users.module';
 import { AlertsModule } from '../alerts/alerts.module';
 import { CloudinaryService } from './cloudinary.service';
 import { AuthModule } from '../auth/auth.module';
+import { PropertyManagementModule } from '../property-management/property-management.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: House.name, schema: HouseSchema }]),
     forwardRef(() => UsersModule),
     forwardRef(() => AuthModule),
+    forwardRef(() => PropertyManagementModule),
     AlertsModule,
   ],
   providers: [HousesService, CloudinaryService],

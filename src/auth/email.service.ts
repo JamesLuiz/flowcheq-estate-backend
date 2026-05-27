@@ -101,6 +101,22 @@ export class EmailService {
     }
   }
 
+  async sendEmailVerificationEmail(email: string, token: string, name?: string) {
+    const verifyUrl = `${this.frontendUrl}/auth/verify-email?token=${token}`;
+    return this.sendEmail({
+      to: email,
+      subject: 'Verify your Nestin Estate email',
+      html: `
+        <p>Hello ${name || 'there'},</p>
+        <p>Please verify your email to list properties and use landlord features on Nestin Estate.</p>
+        <p><a href="${verifyUrl}">Verify email address</a></p>
+        <p>This link expires in 24 hours.</p>
+        <p style="word-break:break-all;color:#1A3C34;">${verifyUrl}</p>
+      `,
+      text: `Verify your email: ${verifyUrl}`,
+    });
+  }
+
   async sendPasswordResetEmail(email: string, resetToken: string, name?: string) {
     const resetUrl = `${this.frontendUrl}/reset-password?token=${resetToken}`;
     const fromEmail =

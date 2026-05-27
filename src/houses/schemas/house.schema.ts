@@ -20,11 +20,21 @@ export class House {
   @Prop({ required: true, min: 0 })
   price: number;
 
+  @Prop({ min: 0 })
+  annualRent?: number;
+
   @Prop({ required: true, trim: true })
   location: string;
 
   @Prop({ required: true, trim: true })
   type: string;
+
+  @Prop({
+    type: String,
+    enum: ['flat', 'self_con', 'duplex', 'bungalow', 'room_parlour', 'studio', 'detached', 'semi_detached', 'terraced'],
+    default: 'flat',
+  })
+  propertyType?: string;
 
   @Prop({ type: [String], default: [] })
   images: string[];
@@ -34,8 +44,13 @@ export class House {
     type: [
       {
         url: { type: String, required: true },
-        tag: { type: String, required: true }, // e.g., 'bathroom', 'bedroom', 'kitchen', 'sitting-room', 'lobby', 'toilet', 'full-photo'
+        tag: { type: String, required: true },
         description: { type: String },
+        lat: { type: Number },
+        lng: { type: Number },
+        accuracy: { type: Number },
+        capturedAt: { type: Date },
+        gpsVerified: { type: Boolean, default: false },
         _id: false,
       },
     ],
@@ -45,6 +60,11 @@ export class House {
     url: string;
     tag: string;
     description?: string;
+    lat?: number;
+    lng?: number;
+    accuracy?: number;
+    capturedAt?: Date;
+    gpsVerified?: boolean;
   }>;
 
   @Prop({
@@ -119,13 +139,106 @@ export class House {
   @Prop({ default: false })
   isAirbnb?: boolean;
 
-  // Proof of address (utility bill or C of O)
+  // Proof of address (legacy single doc — prefer ownershipDocuments)
   @Prop({ type: String })
-  proofOfAddress?: string; // URL to uploaded document
+  proofOfAddress?: string;
+
+  @Prop({
+    type: [
+      {
+        type: {
+          type: String,
+          enum: ['c_of_o', 'utility_bill', 'deed', 'governors_consent', 'land_survey'],
+          required: true,
+        },
+        url: { type: String, required: true },
+        uploadedAt: { type: Date, default: Date.now },
+        _id: false,
+      },
+    ],
+    default: [],
+  })
+  ownershipDocuments?: Array<{
+    type: 'c_of_o' | 'utility_bill' | 'deed' | 'governors_consent' | 'land_survey';
+    url: string;
+    uploadedAt?: Date;
+  }>;
+
+  @Prop({ type: Number, default: 5000 })
+  inspectionFeeAmount?: number;
+
+  @Prop({ default: false })
+  inspectionFeePaid?: boolean;
+
+  @Prop()
+  inspectionPaymentRef?: string;
+
+  @Prop()
+  inspectionPaidAt?: Date;
 
   // Address verification status (set by admin)
   @Prop({ default: false, index: true })
   addressVerified?: boolean;
+
+  @Prop({
+    type: String,
+    enum: ['draft', 'pending_verification', 'verified', 'rejected', 'expired'],
+    default: 'pending_verification',
+    index: true,
+  })
+  verificationStatus?: string;
+
+  @Prop({
+    type: String,
+    enum: ['active', 'rented', 'paused', 'archived'],
+    default: 'active',
+    index: true,
+  })
+  status?: string;
+
+  @Prop()
+  archivedAt?: Date;
+
+  @Prop({ default: false })
+  enquiryEnabled?: boolean;
+
+  @Prop({ type: [String], default: [] })
+  enquiredByUsers?: string[];
+
+  /** Normalized amenity slugs (e.g. wifi, parking, pool) — use lowercase for consistent filtering */
+  @Prop({ type: [String], default: [] })
+  amenities?: string[];
+
+  @Prop({ default: false })
+  gpsVerifiedPhotos?: boolean;
+
+  @Prop({ default: false })
+  coordinatesVerifiedOnSite?: boolean;
+
+  @Prop({
+    type: {
+      lat: { type: Number },
+      lng: { type: Number },
+      accuracy: { type: Number },
+      verifiedBy: { type: Types.ObjectId, ref: 'User' },
+      verifiedAt: { type: Date },
+      distanceMeters: { type: Number },
+      notes: { type: String },
+    },
+    _id: false,
+  })
+  agentLocationVerification?: {
+    lat: number;
+    lng: number;
+    accuracy: number;
+    verifiedBy: Types.ObjectId;
+    verifiedAt: Date;
+    distanceMeters: number;
+    notes?: string;
+  };
+
+  @Prop({ type: Object })
+  photoLocationVerification?: Record<string, unknown>;
 }
 
 export type HouseDocument = HydratedDocument<House>;

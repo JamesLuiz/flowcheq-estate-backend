@@ -9,6 +9,7 @@ import { UsersModule } from '../users/users.module';
 import { PromotionsModule } from '../promotions/promotions.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { EmailService } from './email.service';
+import { RolesGuard } from './guards/roles.guard';
 
 @Module({
   imports: [
@@ -29,8 +30,8 @@ import { EmailService } from './email.service';
       }),
     }),
   ],
-  providers: [AuthService, JwtStrategy, EmailService],
+  providers: [AuthService, JwtStrategy, EmailService, RolesGuard],
   controllers: [AuthController],
-  exports: [AuthService, EmailService],
+  exports: [AuthService, EmailService, RolesGuard],
 })
 export class AuthModule {}

@@ -49,7 +49,16 @@ export class UsersController {
     }
 
     const agents = await this.usersService.findAgents(filter, opts);
-    return { data: agents.map((a) => this.usersService.toSafeUser(a)) };
+    const safeAgents = agents.map((a) => this.usersService.toSafeUser(a));
+    const listingCounts = await this.usersService.countListingsByAgentIds(
+      safeAgents.map((a) => a.id),
+    );
+    return {
+      data: safeAgents.map((a) => ({
+        ...a,
+        listings: listingCounts[a.id] ?? 0,
+      })),
+    };
   }
 
   @Get('me/bank-account')

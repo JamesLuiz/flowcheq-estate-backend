@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Post,
+  Query,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -13,9 +15,15 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes } from '
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { RegisterCompanyDto } from './dto/register-company.dto';
+import { RegisterTenantDto } from './dto/register-tenant.dto';
+import { RegisterLandlordDto } from './dto/register-landlord.dto';
+import { RegisterFieldVerifierDto } from './dto/register-field-verifier.dto';
+import { RegisterAgentDto } from './dto/register-agent.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyPhoneDto } from './dto/verify-phone.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { type RequestUser } from './decorators/current-user.decorator';
@@ -54,6 +62,42 @@ export class AuthController {
   @ApiResponse({ status: 409, description: 'Conflict - user already exists' })
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
+  }
+
+  @Post('register/tenant')
+  @ApiOperation({ summary: 'Register as a tenant' })
+  @ApiResponse({ status: 201, description: 'Tenant registered successfully' })
+  registerTenant(@Body() dto: RegisterTenantDto) {
+    return this.authService.registerTenant(dto);
+  }
+
+  @Post('register/landlord')
+  @ApiOperation({ summary: 'Register as an individual landlord' })
+  @ApiResponse({ status: 201, description: 'Landlord registered successfully' })
+  registerLandlord(@Body() dto: RegisterLandlordDto) {
+    return this.authService.registerLandlord(dto);
+  }
+
+  @Post('register/agent')
+  @ApiOperation({ summary: 'Register as a property agent (manages listings, cannot create them)' })
+  @ApiResponse({ status: 201, description: 'Agent registered successfully' })
+  registerAgent(@Body() dto: RegisterAgentDto) {
+    return this.authService.registerAgent(dto);
+  }
+
+  @Post('register/field-verifier')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Create a field verifier account (admin only)' })
+  @ApiResponse({ status: 201, description: 'Field verifier account created' })
+  registerFieldVerifier(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: RegisterFieldVerifierDto,
+  ) {
+    if (user.role !== 'admin') {
+      throw new ForbiddenException('Only admins can create field verifiers');
+    }
+    return this.authService.registerFieldVerifier(dto);
   }
 
   @Post('register-company')
@@ -120,6 +164,23 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
+  @Get('verify-email')
+  @ApiOperation({ summary: 'Verify email from link in inbox' })
+  verifyEmail(@Query('token') token: string) {
+    if (!token) {
+      throw new BadRequestException('Verification token is required');
+    }
+    return this.authService.verifyEmail(token);
+  }
+
+  @Post('resend-email-verification')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Resend email verification link' })
+  resendEmailVerification(@CurrentUser() user: RequestUser) {
+    return this.authService.resendEmailVerification(user.sub);
+  }
+
   @Post('logout')
   @ApiOperation({ summary: 'Logout (client-side token removal)' })
   @ApiResponse({
@@ -133,6 +194,13 @@ export class AuthController {
   })
   logout() {
     return { success: true };
+  }
+
+  @Post('refresh')
+  @ApiOperation({ summary: 'Rotate access token (refresh flow)' })
+  @ApiResponse({ status: 200, description: 'New token issued' })
+  refresh(@Body() dto: RefreshTokenDto) {
+    return this.authService.refresh(dto.accessToken);
   }
 
   @Get('me')
@@ -165,6 +233,33 @@ export class AuthController {
     }
 
     return this.usersService.toSafeUser(me);
+  }
+
+  @Post('verify-phone')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Submit OTP for phone verification' })
+  @ApiResponse({
+    status: 200,
+    description: 'Phone verification successful',
+    schema: {
+      example: {
+        success: true,
+        message: 'Phone verified successfully',
+      },
+    },
+  })
+  verifyPhone(@CurrentUser() user: RequestUser, @Body() dto: VerifyPhoneDto) {
+    return this.authService.verifyPhone(user.sub, dto.otp);
+  }
+
+  @Post('resend-otp')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Resend phone verification OTP' })
+  @ApiResponse({ status: 200, description: 'OTP resent successfully' })
+  resendOtp(@CurrentUser() user: RequestUser) {
+    return this.authService.resendPhoneOtp(user.sub);
   }
 
   @Post('forgot-password')

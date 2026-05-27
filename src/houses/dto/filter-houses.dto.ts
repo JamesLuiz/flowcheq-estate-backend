@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsBoolean,
   IsMongoId,
   IsNumber,
@@ -99,5 +100,28 @@ export class FilterHousesDto {
   @IsString()
   @IsOptional()
   listingType?: 'rent' | 'buy';
+
+  @ApiProperty({
+    example: ['wifi', 'parking'],
+    description:
+      'Listings must include all of these amenities (comma-separated or repeated query keys). Values are matched case-insensitively.',
+    required: false,
+    isArray: true,
+    type: String,
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') return undefined;
+    if (Array.isArray(value)) {
+      return value.flatMap((v: string) => String(v).split(',')).map((s) => s.trim().toLowerCase()).filter(Boolean);
+    }
+    if (typeof value === 'string') {
+      return value.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    }
+    return undefined;
+  })
+  amenities?: string[];
 }
 

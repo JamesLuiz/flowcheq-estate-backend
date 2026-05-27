@@ -42,8 +42,32 @@ export class VerificationsService {
       throw new NotFoundException('User not found');
     }
 
-    if (user.role !== UserRole.Agent && user.role !== UserRole.Landlord) {
-      throw new ForbiddenException('Only agents and landlords can submit verification documents');
+    const landlordRoles = new Set([
+      UserRole.Landlord,
+      UserRole.RealEstateCompany,
+      UserRole.Company,
+    ]);
+    const isLandlord = landlordRoles.has(user.role as UserRole);
+    const isAgent = user.role === UserRole.Agent;
+
+    if (!isLandlord && !isAgent) {
+      throw new ForbiddenException('Only landlords and agents can submit verification documents');
+    }
+
+    if (isLandlord) {
+      if (!user.emailVerified) {
+        throw new ForbiddenException(
+          'Verify your email before submitting your selfie. Check your inbox for the verification link.',
+        );
+      }
+      if (!user.nin) {
+        throw new ForbiddenException(
+          'NIN is required on your profile. Update your registration details or contact support.',
+        );
+      }
+      if (documentType !== DocumentType.NIN) {
+        throw new BadRequestException('Landlords must verify with NIN only');
+      }
     }
 
     // Check if user already has a pending verification

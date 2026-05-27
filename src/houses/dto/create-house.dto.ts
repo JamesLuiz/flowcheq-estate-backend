@@ -140,5 +140,32 @@ export class CreateHouseDto {
   @IsString()
   @IsOptional()
   proofOfAddress?: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Rent: c_of_o + utility_bill. Sale: c_of_o, deed, governors_consent, land_survey',
+    example: [
+      { type: 'c_of_o', url: 'https://res.cloudinary.com/.../co.pdf' },
+      { type: 'utility_bill', url: 'https://res.cloudinary.com/.../bill.pdf' },
+    ],
+  })
+  @IsArray()
+  @IsOptional()
+  ownershipDocuments?: Array<{
+    type: 'c_of_o' | 'utility_bill' | 'deed' | 'governors_consent' | 'land_survey';
+    url: string;
+    uploadedAt?: Date;
+  }>;
+
+  @ApiProperty({
+    example: ['wifi', 'parking', 'security'],
+    required: false,
+    description: 'Amenity slugs (stored lowercase)',
+  })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  amenities?: string[];
 }
 

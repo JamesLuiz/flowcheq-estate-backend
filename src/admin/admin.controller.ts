@@ -280,7 +280,7 @@ export class AdminController {
       type: 'object',
       properties: {
         amount: { type: 'number', example: 10000, description: 'Amount to disburse' },
-        reason: { type: 'string', example: 'Manual viewing fee disbursement' },
+        reason: { type: 'string', example: 'Manual inspection fee disbursement' },
       },
       required: ['amount'],
     },
@@ -350,11 +350,11 @@ export class AdminController {
     };
   }
 
-  // ============ VIEWING FEES MANAGEMENT ============
-  @ApiOperation({ summary: 'Get all viewing fees with receipts (admin only)' })
+  // ============ INSPECTION FEES MANAGEMENT ============
+  @ApiOperation({ summary: 'Get all inspection fees with receipts (admin only)' })
   @ApiResponse({
     status: 200,
-    description: 'List of all viewing fees',
+    description: 'List of all inspection fees',
   })
   async getAllViewingFees(@CurrentUser() user: RequestUser) {
     this.ensureAdmin(user);
@@ -466,7 +466,7 @@ export class AdminController {
     // Store in database
     await this.settingsModel.findOneAndUpdate(
       { key: 'platformFeePercentage' },
-      { key: 'platformFeePercentage', value: body.platformFeePercentage, description: 'Platform fee percentage for viewing fees' },
+      { key: 'platformFeePercentage', value: body.platformFeePercentage, description: 'Platform fee percentage for inspection fees' },
       { upsert: true, new: true },
     );
 

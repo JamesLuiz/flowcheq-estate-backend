@@ -15,6 +15,7 @@ import { UpdateAgentProfileDto } from './dto/update-agent-profile.dto';
 import { User, UserDocument, UserRole } from './schemas/user.schema';
 import { Withdrawal, WithdrawalDocument } from './schemas/withdrawal.schema';
 import { Earning, EarningDocument } from './schemas/earning.schema';
+import { House, HouseDocument } from '../houses/schemas/house.schema';
 import { EmailService } from '../auth/email.service';
 
 @Injectable()
@@ -26,9 +27,28 @@ export class UsersService {
     private readonly withdrawalModel: Model<WithdrawalDocument>,
     @InjectModel(Earning.name)
     private readonly earningModel: Model<EarningDocument>,
+    @InjectModel(House.name)
+    private readonly houseModel: Model<HouseDocument>,
     @Inject(forwardRef(() => EmailService))
     private readonly emailService: EmailService,
   ) {}
+
+  async countListingsByAgentIds(agentIds: string[]): Promise<Record<string, number>> {
+    if (!agentIds.length) return {};
+    const objectIds = agentIds
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+    if (!objectIds.length) return {};
+
+    const rows = await this.houseModel
+      .aggregate<{ _id: Types.ObjectId; count: number }>([
+        { $match: { agentId: { $in: objectIds } } },
+        { $group: { _id: '$agentId', count: { $sum: 1 } } },
+      ])
+      .exec();
+
+    return Object.fromEntries(rows.map((r) => [r._id.toString(), r.count]));
+  }
 
   async create(payload: CreateUserDto): Promise<UserDocument> {
     const existing = await this.userModel
@@ -59,6 +79,108 @@ export class UsersService {
 
   async findById(id: string): Promise<UserDocument | null> {
     return this.userModel.findById(id).exec();
+  }
+
+  async updateUserProfile(id: string, payload: Partial<User>) {
+    const updated = await this.userModel
+      .findByIdAndUpdate(id, { $set: payload }, { new: true })
+      .exec();
+    if (!updated) {
+      throw new NotFoundException('User not found');
+    }
+    return this.toSafeUser(updated);
+  }
+
+  async getSavedProperties(userId: string): Promise<string[]> {
+    const user = await this.userModel.findById(userId).exec();
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return user.savedProperties ?? [];
+  }
+
+  async saveProperty(userId: string, propertyId: string) {
+    const updated = await this.userModel
+      .findByIdAndUpdate(
+        userId,
+        { $addToSet: { savedProperties: propertyId } },
+        { new: true },
+      )
+      .exec();
+    if (!updated) {
+      throw new NotFoundException('User not found');
+    }
+    return updated.savedProperties ?? [];
+  }
+
+  async removeSavedProperty(userId: string, propertyId: string) {
+    const updated = await this.userModel
+      .findByIdAndUpdate(
+        userId,
+        { $pull: { savedProperties: propertyId } },
+        { new: true },
+      )
+      .exec();
+    if (!updated) {
+      throw new NotFoundException('User not found');
+    }
+    return updated.savedProperties ?? [];
+  }
+
+  async setNestinIdVerificationStatus(
+    userId: string,
+    verified: boolean,
+    verifiedAt?: Date,
+  ) {
+    const updated = await this.userModel
+      .findByIdAndUpdate(
+        userId,
+        {
+          $set: {
+            nestinIdVerified: verified,
+            nestinIdVerifiedAt: verified ? verifiedAt ?? new Date() : undefined,
+          },
+        },
+        { new: true },
+      )
+      .exec();
+    if (!updated) {
+      throw new NotFoundException('User not found');
+    }
+    return this.toSafeUser(updated);
+  }
+
+  async updateLastLoginAt(id: string) {
+    await this.userModel.findByIdAndUpdate(id, {
+      $set: { lastLoginAt: new Date() },
+    }).exec();
+  }
+
+  async savePhoneOtp(userId: string, otp: string, expiresAt: Date) {
+    await this.userModel.findByIdAndUpdate(userId, {
+      $set: {
+        phoneOtp: otp,
+        phoneOtpExpiresAt: expiresAt,
+      },
+    }).exec();
+  }
+
+  async verifyPhoneOtp(userId: string, otp: string): Promise<boolean> {
+    const user = await this.userModel.findById(userId).exec();
+    if (!user || !user.phoneOtp || !user.phoneOtpExpiresAt) {
+      return false;
+    }
+
+    if (user.phoneOtp !== otp || user.phoneOtpExpiresAt < new Date()) {
+      return false;
+    }
+
+    await this.userModel.findByIdAndUpdate(userId, {
+      $set: { phoneVerified: true },
+      $unset: { phoneOtp: '', phoneOtpExpiresAt: '' },
+    }).exec();
+
+    return true;
   }
 
   async updateAgentProfile(
@@ -211,9 +333,41 @@ export class UsersService {
     await this.userModel.findByIdAndDelete(id).exec();
   }
 
+  async setEmailVerificationToken(userId: string, token: string, expiresAt: Date) {
+    await this.userModel.findByIdAndUpdate(userId, {
+      $set: {
+        emailVerificationToken: token,
+        emailVerificationExpires: expiresAt,
+        emailVerified: false,
+      },
+    }).exec();
+  }
+
+  async findByEmailVerificationToken(token: string): Promise<UserDocument | null> {
+    return this.userModel
+      .findOne({
+        emailVerificationToken: token,
+        emailVerificationExpires: { $gt: new Date() },
+      })
+      .exec();
+  }
+
+  async markEmailVerified(userId: string): Promise<UserDocument | null> {
+    return this.userModel
+      .findByIdAndUpdate(
+        userId,
+        {
+          $set: { emailVerified: true },
+          $unset: { emailVerificationToken: '', emailVerificationExpires: '' },
+        },
+        { new: true },
+      )
+      .exec();
+  }
+
   toSafeUser(user: UserDocument) {
     const plain = user.toObject();
-    const { password, __v, _id, resetToken, resetTokenExpiry, ...rest } = plain as any;
+    const { password, __v, _id, resetToken, resetTokenExpiry, emailVerificationToken, emailVerificationExpires, ...rest } = plain as any;
     return {
       id: _id?.toString() ?? user.id,
       ...rest,

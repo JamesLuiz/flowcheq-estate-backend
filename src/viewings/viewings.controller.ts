@@ -3,6 +3,8 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { ViewingsService } from './viewings.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { type RequestUser } from '../auth/decorators/current-user.decorator';
 import { ScheduleViewingDto } from './dto/schedule-viewing.dto';
@@ -157,7 +159,7 @@ export class ViewingsController {
   @UseInterceptors(FileInterceptor('receipt'))
   @ApiBearerAuth('access-token')
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Upload receipt for viewing fee' })
+  @ApiOperation({ summary: 'Upload receipt for inspection fee' })
   @ApiParam({ name: 'id', description: 'Viewing ID', example: '64a1f2e9c...' })
   @ApiBody({
     schema: {
@@ -206,7 +208,7 @@ export class ViewingsController {
   @Post(':id/payment/initialize')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Initialize payment for viewing fee' })
+  @ApiOperation({ summary: 'Initialize payment for inspection fee' })
   @ApiParam({ name: 'id', description: 'Viewing ID', example: '64a1f2e9c...' })
   @ApiResponse({
     status: 200,
@@ -232,7 +234,7 @@ export class ViewingsController {
   @Post('payment/verify')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Verify viewing payment' })
+  @ApiOperation({ summary: 'Verify inspection fee payment' })
   @ApiBody({
     schema: {
       type: 'object',
@@ -265,5 +267,73 @@ export class ViewingsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.viewingsService.verifyViewingPayment(body.tx_ref, user.sub);
+  }
+
+  @Post('request')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('tenant')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Request a viewing slot' })
+  requestViewing(
+    @CurrentUser() user: RequestUser,
+    @Body()
+    body: {
+      propertyId: string;
+      landlordId: string;
+      preferredDate: string;
+      preferredTime: string;
+      notes?: string;
+    },
+  ) {
+    return this.viewingsService.requestViewing(user.sub, body);
+  }
+
+  @Get('landlord')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('landlord', 'real_estate_company')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Viewing requests for landlord properties' })
+  landlordViewings(@CurrentUser() user: RequestUser) {
+    return this.viewingsService.getLandlordViewings(user.sub);
+  }
+
+  @Post(':id/confirm')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('landlord', 'real_estate_company')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Confirm viewing request' })
+  confirmViewing(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    return this.viewingsService.confirmViewing(id, user.sub);
+  }
+
+  @Post(':id/decline')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('landlord', 'real_estate_company')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Decline viewing request with reason' })
+  declineViewing(
+    @CurrentUser() user: RequestUser,
+    @Param('id') id: string,
+    @Body() body: { reason?: string },
+  ) {
+    return this.viewingsService.declineViewing(id, user.sub, body.reason);
+  }
+
+  @Post(':id/cancel')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('tenant', 'landlord', 'real_estate_company')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Cancel confirmed viewing' })
+  cancelViewing(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    return this.viewingsService.cancelViewing(id, user.sub);
+  }
+
+  @Post(':id/complete')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('landlord', 'real_estate_company')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Mark viewing as completed' })
+  completeViewing(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    return this.viewingsService.completeViewing(id, user.sub);
   }
 }

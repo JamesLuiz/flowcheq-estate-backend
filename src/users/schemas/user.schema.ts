@@ -2,9 +2,13 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 
 export enum UserRole {
+  Tenant = 'tenant',
+  RealEstateCompany = 'real_estate_company',
+  FieldVerifier = 'field_verifier',
   Agent = 'agent',
   Landlord = 'landlord',
   User = 'user',
+  HouseHunter = 'house_hunter',
   Admin = 'admin',
   Company = 'company', // Real Estate Company
 }
@@ -36,6 +40,24 @@ export class User {
 
   @Prop({ trim: true })
   phone?: string;
+
+  @Prop({ default: false })
+  phoneVerified?: boolean;
+
+  @Prop({ default: false })
+  emailVerified?: boolean;
+
+  @Prop({ select: false })
+  emailVerificationToken?: string;
+
+  @Prop({ select: false })
+  emailVerificationExpires?: Date;
+
+  @Prop()
+  phoneOtp?: string;
+
+  @Prop()
+  phoneOtpExpiresAt?: Date;
 
   @Prop({ trim: true })
   bio?: string;
@@ -129,6 +151,63 @@ export class User {
 
   @Prop()
   companyRejectionReason?: string;
+
+  @Prop()
+  bvn?: string;
+
+  @Prop()
+  nin?: string;
+
+  @Prop({
+    enum: ['pending', 'approved', 'rejected', 'suspended'],
+    default: 'pending',
+  })
+  kycStatus?: 'pending' | 'approved' | 'rejected' | 'suspended';
+
+  @Prop()
+  kycSubmittedAt?: Date;
+
+  @Prop()
+  kycReviewedAt?: Date;
+
+  @Prop()
+  kycRejectionReason?: string;
+
+  @Prop({ default: true })
+  isActive?: boolean;
+
+  @Prop()
+  lastLoginAt?: Date;
+
+  @Prop({ type: [String], default: [] })
+  deviceTokens?: string[];
+
+  @Prop({ type: [String], default: [] })
+  savedProperties?: string[];
+
+  @Prop({ default: false })
+  nestinIdVerified?: boolean;
+
+  @Prop()
+  nestinIdVerifiedAt?: Date;
+
+  @Prop()
+  occupation?: string;
+
+  @Prop()
+  employer?: string;
+
+  @Prop()
+  monthlyIncome?: number;
+
+  @Prop()
+  guarantorName?: string;
+
+  @Prop()
+  guarantorPhone?: string;
+
+  @Prop()
+  guarantorRelationship?: string;
 }
 
 export type UserDocument = HydratedDocument<User>;

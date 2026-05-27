@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
   Inject,
@@ -12,6 +13,10 @@ import * as crypto from 'crypto';
 import { UsersService } from '../users/users.service';
 import { RegisterDto } from './dto/register.dto';
 import { RegisterCompanyDto } from './dto/register-company.dto';
+import { RegisterTenantDto } from './dto/register-tenant.dto';
+import { RegisterLandlordDto } from './dto/register-landlord.dto';
+import { RegisterAgentDto } from './dto/register-agent.dto';
+import { RegisterFieldVerifierDto } from './dto/register-field-verifier.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -24,6 +29,8 @@ import { CloudinaryService } from '../houses/cloudinary.service';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
@@ -34,10 +41,18 @@ export class AuthService {
     private readonly cloudinaryService: CloudinaryService,
   ) {}
 
+  private encryptSensitiveValue(raw: string): string {
+    return Buffer.from(raw, 'utf-8').toString('base64');
+  }
+
+  private generateOtp(): string {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
+
   async register(dto: RegisterDto) {
     const payload: CreateUserDto = {
       ...dto,
-      role: dto.role ?? UserRole.User,
+      role: dto.role ?? UserRole.Tenant,
       password: await this.hashPassword(dto.password),
     };
 
@@ -51,10 +66,10 @@ export class AuthService {
           email: user.email,
           mobilenumber: user.phone || '08000000000', // Default phone if not provided
         });
-        console.log(`Virtual account created for ${user.email}`);
+        this.logger.log(`Virtual account created for ${user.email}`);
       } catch (error: any) {
         // Don't fail registration if virtual account creation fails
-        console.error(`Failed to create virtual account for ${user.email}:`, error.message || error);
+        this.logger.error(`Failed to create virtual account for ${user.email}: ${error.message || error}`);
       }
     }
 
@@ -63,9 +78,98 @@ export class AuthService {
       const role = user.role === 'agent' ? 'agent' : user.role === 'landlord' ? 'landlord' : 'user';
       await this.emailService.sendWelcomeEmail(user.email, user.name, role);
     } catch (error) {
-      console.error('Failed to send welcome email:', error);
+      this.logger.error(`Failed to send welcome email: ${String(error)}`);
     }
 
+    return this.buildAuthResponse(user);
+  }
+
+  async registerTenant(dto: RegisterTenantDto) {
+    return this.register({
+      ...dto,
+      role: UserRole.Tenant,
+    });
+  }
+
+  async registerLandlord(dto: RegisterLandlordDto) {
+    const payload: CreateUserDto = {
+      name: dto.name,
+      email: dto.email,
+      password: await this.hashPassword(dto.password),
+      phone: dto.phone,
+      bio: dto.bio,
+      role: UserRole.Landlord,
+    };
+
+    const user = await this.usersService.create(payload);
+    await this.usersService.updateAgentProfile(user._id.toString(), {
+      bvn: dto.bvn ? this.encryptSensitiveValue(dto.bvn) : undefined,
+      nin: this.encryptSensitiveValue(dto.nin),
+      kycStatus: 'pending',
+      kycSubmittedAt: new Date(),
+    } as any);
+
+    await this.issueEmailVerification(user._id.toString(), user.email, user.name);
+
+    return this.buildAuthResponse(await this.usersService.findById(user._id.toString()) as UserDocument);
+  }
+
+  async issueEmailVerification(userId: string, email: string, name: string) {
+    const token = crypto.randomBytes(32).toString('hex');
+    const expires = new Date();
+    expires.setHours(expires.getHours() + 24);
+    await this.usersService.setEmailVerificationToken(userId, token, expires);
+    try {
+      await this.emailService.sendEmailVerificationEmail(email, token, name);
+    } catch (error) {
+      this.logger.error(`Failed to send verification email: ${String(error)}`);
+    }
+  }
+
+  async verifyEmail(token: string) {
+    const user = await this.usersService.findByEmailVerificationToken(token);
+    if (!user) {
+      throw new BadRequestException('Invalid or expired verification link');
+    }
+    await this.usersService.markEmailVerified(user._id.toString());
+    return {
+      success: true,
+      message: 'Email verified successfully. You can close this page and continue in the app.',
+    };
+  }
+
+  async resendEmailVerification(userId: string) {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    if (user.emailVerified) {
+      return { success: true, message: 'Email is already verified' };
+    }
+    await this.issueEmailVerification(userId, user.email, user.name);
+    return { success: true, message: 'Verification email sent' };
+  }
+
+  async registerAgent(dto: RegisterAgentDto) {
+    return this.register({
+      name: dto.name,
+      email: dto.email,
+      password: dto.password,
+      phone: dto.phone,
+      bio: dto.bio,
+      role: UserRole.Agent,
+    });
+  }
+
+  async registerFieldVerifier(dto: RegisterFieldVerifierDto) {
+    const payload: CreateUserDto = {
+      name: dto.name,
+      email: dto.email,
+      password: await this.hashPassword(dto.password),
+      phone: dto.phone,
+      role: UserRole.FieldVerifier,
+    };
+    const user = await this.usersService.create(payload);
     return this.buildAuthResponse(user);
   }
 
@@ -84,7 +188,7 @@ export class AuthService {
       password: await this.hashPassword(dto.password),
       phone: dto.phone,
       bio: dto.bio,
-      role: UserRole.Company,
+      role: UserRole.RealEstateCompany,
     };
 
     const user = await this.usersService.create(payload);
@@ -106,7 +210,7 @@ export class AuthService {
         text: `A new real estate company has registered and requires verification.\n\nCompany: ${dto.companyDetails.companyName}\nCAC Number: ${dto.companyDetails.cacNumber}\nBusiness Email: ${dto.companyDetails.businessEmail}\n\nPlease review the CAC document and verify the company.`,
       });
     } catch (error) {
-      console.error('Failed to send admin notification:', error);
+      this.logger.error(`Failed to send admin notification: ${String(error)}`);
     }
 
     return {
@@ -149,7 +253,44 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
+    await this.usersService.updateLastLoginAt(user._id.toString());
     return this.buildAuthResponse(user);
+  }
+
+  async refresh(accessToken: string) {
+    try {
+      const decoded = await this.jwtService.verifyAsync<JwtPayload>(accessToken);
+      const user = await this.usersService.findById(decoded.sub);
+      if (!user) {
+        throw new UnauthorizedException('Invalid token');
+      }
+      return this.buildAuthResponse(user);
+    } catch {
+      throw new UnauthorizedException('Invalid token');
+    }
+  }
+
+  async resendPhoneOtp(userId: string) {
+    const otp = this.generateOtp();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await this.usersService.savePhoneOtp(userId, otp, expiresAt);
+    return {
+      success: true,
+      message: 'OTP resent successfully',
+      otp,
+      expiresAt,
+    };
+  }
+
+  async verifyPhone(userId: string, otp: string) {
+    const isValid = await this.usersService.verifyPhoneOtp(userId, otp);
+    if (!isValid) {
+      throw new BadRequestException('Invalid or expired OTP');
+    }
+    return {
+      success: true,
+      message: 'Phone verified successfully',
+    };
   }
 
   private async hashPassword(password: string): Promise<string> {
@@ -189,7 +330,7 @@ export class AuthService {
     } catch (error) {
       // Log error but don't fail the request
       // User still gets success message for security (don't reveal if email exists)
-      console.error('Failed to send password reset email:', error);
+      this.logger.error(`Failed to send password reset email: ${String(error)}`);
     }
 
     return {

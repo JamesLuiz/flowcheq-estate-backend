@@ -16,6 +16,19 @@ import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/schemas/user.schema';
 import { AlertsService } from '../alerts/alerts.service';
 import { EmailService } from '../auth/email.service';
+import { PropertyManagementService } from '../property-management/property-management.service';
+import {
+  validateGpsPhotoMetadata,
+  validateOwnershipDocuments,
+  type TaggedPhotoInput,
+} from './listing-validation.util';
+import { INSPECTION_FEE_NGN } from '../common/listing-requirements';
+
+const LISTING_OWNER_ROLES: UserRole[] = [
+  UserRole.Landlord,
+  UserRole.RealEstateCompany,
+  UserRole.Company,
+];
 
 @Injectable()
 export class HousesService {
@@ -27,6 +40,8 @@ export class HousesService {
     private readonly alertsService: AlertsService,
     @Inject(forwardRef(() => EmailService))
     private readonly emailService: EmailService,
+    @Inject(forwardRef(() => PropertyManagementService))
+    private readonly propertyManagementService: PropertyManagementService,
   ) {}
 
   /**
@@ -43,20 +58,43 @@ export class HousesService {
   async create(agentId: string, dto: CreateHouseDto) {
     const agent = await this.usersService.findById(agentId);
 
-    if (!agent || (agent.role !== UserRole.Agent && agent.role !== UserRole.Landlord)) {
-      throw new ForbiddenException('Only agents and landlords can create listings');
+    if (!agent || !LISTING_OWNER_ROLES.includes(agent.role as UserRole)) {
+      throw new ForbiddenException(
+        'Only landlords and real estate companies can create listings. Agents must request management from the owner.',
+      );
     }
 
-    // Check if user is verified
+    if (!agent.emailVerified) {
+      throw new ForbiddenException(
+        'Please verify your email address before creating listings. Check your inbox for the verification link.',
+      );
+    }
+
     if (!agent.verified || agent.verificationStatus !== 'approved') {
-      throw new ForbiddenException('You must be verified to upload properties. Please complete verification first.');
+      throw new ForbiddenException(
+        'Complete landlord verification (NIN on profile, email verified, selfie approved) before listing properties.',
+      );
     }
 
-    // Initialize shared property fields
+    const listingType = (dto.listingType === 'rent' ? 'rent' : 'buy') as 'rent' | 'buy';
+    validateGpsPhotoMetadata(dto.taggedPhotos as any);
+    validateOwnershipDocuments(listingType, dto.ownershipDocuments as any);
+
     const houseData: any = {
       ...dto,
       agentId: new Types.ObjectId(agentId),
+      inspectionFeeAmount: INSPECTION_FEE_NGN,
+      inspectionFeePaid: false,
+      gpsVerifiedPhotos: (dto.taggedPhotos ?? []).every(
+        (p: any) => p.gpsVerified || (p.lat != null && p.lng != null),
+      ),
     };
+
+    if (dto.amenities?.length) {
+      houseData.amenities = dto.amenities
+        .map((a) => String(a).trim().toLowerCase())
+        .filter(Boolean);
+    }
 
     // If it's a shared property, initialize availableSlots
     if (dto.isShared && dto.totalSlots) {
@@ -120,6 +158,10 @@ export class HousesService {
       query.listingType = filters.listingType;
     }
 
+    if (filters.amenities?.length) {
+      query.amenities = { $all: filters.amenities };
+    }
+
     if (filters.search) {
       const searchRegex = new RegExp(escapeRegex(filters.search), 'i');
       query.$or = [
@@ -138,22 +180,31 @@ export class HousesService {
       .lean()
       .exec();
 
-    // Sort by location if coordinates provided (show ALL properties, just sorted by distance)
-    if (filters.lat !== undefined && filters.lng !== undefined) {
-      // Separate houses with and without coordinates
-      const housesWithCoords: any[] = [];
-      const housesWithoutCoords: any[] = [];
+    const hasGeo =
+      filters.lat !== undefined &&
+      filters.lng !== undefined &&
+      !Number.isNaN(Number(filters.lat)) &&
+      !Number.isNaN(Number(filters.lng));
 
-      houseDocs.forEach((house: any) => {
-        if (house.coordinates && house.coordinates.lat && house.coordinates.lng) {
-          housesWithCoords.push(house);
-        } else {
-          housesWithoutCoords.push(house);
+    if (hasGeo) {
+      const radiusKm = filters.radius ?? 10;
+      houseDocs = houseDocs.filter((house: any) => {
+        if (
+          house.coordinates == null ||
+          house.coordinates.lat == null ||
+          house.coordinates.lng == null
+        ) {
+          return false;
         }
+        const d = this.calculateDistance(
+          filters.lat!,
+          filters.lng!,
+          house.coordinates.lat,
+          house.coordinates.lng,
+        );
+        return d <= radiusKm;
       });
-
-      // Sort houses with coordinates by distance (closest first) - show ALL, not filtered by radius
-      housesWithCoords.sort((a: any, b: any) => {
+      houseDocs.sort((a: any, b: any) => {
         const distA = this.calculateDistance(
           filters.lat!,
           filters.lng!,
@@ -168,18 +219,7 @@ export class HousesService {
         );
         return distA - distB;
       });
-
-      // Sort houses without coordinates by creation date (newest first)
-      housesWithoutCoords.sort((a: any, b: any) => {
-        const dateA = new Date(a.createdAt || 0).getTime();
-        const dateB = new Date(b.createdAt || 0).getTime();
-        return dateB - dateA;
-      });
-
-      // Combine: houses with coordinates first (sorted by distance), then houses without coordinates
-      houseDocs = [...housesWithCoords, ...housesWithoutCoords];
     } else {
-      // Default sort by creation date
       houseDocs.sort((a: any, b: any) => {
         const dateA = new Date(a.createdAt || 0).getTime();
         const dateB = new Date(b.createdAt || 0).getTime();
@@ -265,22 +305,8 @@ export class HousesService {
     }
   }
 
-  async trackView(id: string) {
-    this.validateObjectId(id, 'property ID');
-    try {
-    await this.houseModel
-      .findByIdAndUpdate(new Types.ObjectId(id), {
-        $inc: { viewCount: 1 },
-      })
-      .exec();
-    return { success: true };
-    } catch (error) {
-      // Catch BSON errors silently for tracking (non-critical operation)
-      if (error instanceof Error && error.name === 'BSONError') {
-        return { success: false };
-      }
-      throw error;
-    }
+  async trackView(id: string, viewerId?: string) {
+    return this.propertyManagementService.recordPropertyView(id, viewerId);
   }
 
   async trackWhatsAppClick(id: string) {
@@ -315,7 +341,13 @@ export class HousesService {
 
     // Handle shared property updates
     const updateData: any = { ...dto };
-    
+
+    if (dto.amenities !== undefined) {
+      updateData.amenities = (dto.amenities ?? []).map((a) =>
+        String(a).trim().toLowerCase(),
+      ).filter(Boolean);
+    }
+
     if (dto.isShared !== undefined) {
       if (dto.isShared && dto.totalSlots) {
         // If converting to shared or updating slots
@@ -367,6 +399,50 @@ export class HousesService {
     return this.toHouseResponse(updatedHouse);
   }
 
+  async replaceGpsCapturedPhotos(
+    houseId: string,
+    agentId: string,
+    taggedPhotos: TaggedPhotoInput[],
+  ) {
+    await this.ensureAgentOwnsHouse(agentId, houseId);
+
+    const house = await this.houseModel.findById(new Types.ObjectId(houseId)).exec();
+    if (!house) {
+      throw new NotFoundException('House not found');
+    }
+
+    validateGpsPhotoMetadata(taggedPhotos);
+
+    const imageUrls = taggedPhotos.map((p) => p.url);
+
+    const updatedHouse = await this.houseModel
+      .findByIdAndUpdate(
+        new Types.ObjectId(houseId),
+        {
+          $set: {
+            taggedPhotos,
+            images: imageUrls,
+            gpsVerifiedPhotos: taggedPhotos.every(
+              (p) =>
+                typeof p.lat === 'number' &&
+                typeof p.lng === 'number' &&
+                !Number.isNaN(p.lat) &&
+                !Number.isNaN(p.lng),
+            ),
+          },
+        },
+        { new: true },
+      )
+      .exec();
+
+    if (!updatedHouse) {
+      throw new NotFoundException('House not found');
+    }
+
+    await updatedHouse.populate('agentId');
+    return this.toHouseResponse(updatedHouse);
+  }
+
   async updateViewingFee(houseId: string, agentId: string, viewingFee: number) {
     await this.ensureAgentOwnsHouse(agentId, houseId);
 
@@ -377,7 +453,7 @@ export class HousesService {
 
     const updateData: any = {};
     if (viewingFee === 0 || viewingFee === null || viewingFee === undefined) {
-      // Remove viewing fee
+      // Remove inspection fee
       updateData.viewingFee = undefined;
     } else {
       updateData.viewingFee = viewingFee;
@@ -442,6 +518,91 @@ export class HousesService {
       .exec();
 
     return houses.map((house) => this.toHouseResponse(house));
+  }
+
+  async pauseListing(houseId: string, ownerId: string) {
+    await this.ensureAgentOwnsHouse(ownerId, houseId);
+    const updated = await this.houseModel.findByIdAndUpdate(
+      new Types.ObjectId(houseId),
+      { $set: { status: 'paused' } },
+      { new: true },
+    );
+    if (!updated) throw new NotFoundException('House not found');
+    return this.toHouseResponse(updated);
+  }
+
+  async activateListing(houseId: string, ownerId: string) {
+    await this.ensureAgentOwnsHouse(ownerId, houseId);
+    const updated = await this.houseModel.findByIdAndUpdate(
+      new Types.ObjectId(houseId),
+      { $set: { status: 'active' } },
+      { new: true },
+    );
+    if (!updated) throw new NotFoundException('House not found');
+    return this.toHouseResponse(updated);
+  }
+
+  async markRented(houseId: string, ownerId: string) {
+    await this.ensureAgentOwnsHouse(ownerId, houseId);
+    const updated = await this.houseModel.findByIdAndUpdate(
+      new Types.ObjectId(houseId),
+      { $set: { status: 'rented' } },
+      { new: true },
+    );
+    if (!updated) throw new NotFoundException('House not found');
+    return this.toHouseResponse(updated);
+  }
+
+  async registerEnquiry(houseId: string, userId: string) {
+    const house = await this.houseModel.findByIdAndUpdate(
+      new Types.ObjectId(houseId),
+      {
+        $addToSet: { enquiredByUsers: userId },
+        $inc: { whatsappClicks: 1 },
+        $set: { enquiryEnabled: true },
+      },
+      { new: true },
+    );
+    if (!house) throw new NotFoundException('House not found');
+    return { success: true };
+  }
+
+  async revealContact(houseId: string, userId: string) {
+    const house = await this.houseModel.findById(new Types.ObjectId(houseId)).populate('agentId');
+    if (!house) throw new NotFoundException('House not found');
+    if (!house.enquiredByUsers?.includes(userId)) {
+      throw new ForbiddenException('Enquiry required before revealing contact');
+    }
+    const owner = house.agentId as any;
+    return { phone: owner?.phone ?? null };
+  }
+
+  async getPriceComparison(houseId: string) {
+    const house = await this.houseModel.findById(new Types.ObjectId(houseId));
+    if (!house) throw new NotFoundException('House not found');
+    const areaMedianRent = house.annualRent ?? house.price ?? 0;
+    return {
+      areaMedianRent,
+      priceVsMedian: 0,
+      priceAlert: false,
+    };
+  }
+
+  /**
+   * True if another listing exists within `radiusKm` (default ~50m) for duplicate-address checks.
+   */
+  async checkDuplicateCoordinates(lat: number, lng: number, radiusKm = 0.05) {
+    const res = await this.findAll({
+      lat,
+      lng,
+      radius: radiusKm,
+      limit: 50,
+      skip: 0,
+    });
+    return {
+      duplicate: (res.data?.length ?? 0) > 0,
+      matches: res.data ?? [],
+    };
   }
 
   private async ensureAgentOwnsHouse(agentId: string, houseId: string) {
