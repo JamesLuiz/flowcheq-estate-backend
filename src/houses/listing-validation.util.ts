@@ -40,7 +40,7 @@ export function validateGpsPhotoMetadata(taggedPhotos: TaggedPhotoInput[] | unde
 
     if (!hasCoords && !photo.gpsVerified) {
       throw new BadRequestException(
-        `Photo ${i + 1} must include GPS coordinates from Nestin Capture (in-app camera). Gallery uploads are not allowed.`,
+        `Photo ${i + 1} must include GPS coordinates from Flowcheq Capture (in-app camera). Gallery uploads are not allowed.`,
       );
     }
   }

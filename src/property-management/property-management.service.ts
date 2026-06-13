@@ -24,6 +24,8 @@ import { UpdateLeadDto } from './dto/update-lead.dto';
 import { House, HouseDocument } from '../houses/schemas/house.schema';
 import { User, UserDocument, UserRole } from '../users/schemas/user.schema';
 import { AGENT_ONSITE_VERIFY_RADIUS_M, haversineMeters } from '../common/geo.util';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/schemas/notification.schema';
 
 const LISTING_OWNER_ROLES = new Set<UserRole>([
   UserRole.Landlord,
@@ -42,6 +44,7 @@ export class PropertyManagementService {
     private readonly houseModel: Model<HouseDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   private validateObjectId(id: string, label = 'ID') {
@@ -124,7 +127,22 @@ export class PropertyManagementService {
       agentId: new Types.ObjectId(agentUserId),
       landlordId,
       message: dto.message,
+      bio: dto.bio ?? agent.bio,
       status: ManagementRequestStatus.Pending,
+    });
+
+    // Notify the landlord so they can review the agent's profile and approve.
+    await this.notificationsService.create({
+      userId: landlordId.toString(),
+      type: NotificationType.ManagementRequest,
+      title: 'New agent management request',
+      body: `${agent.name} wants to manage "${house.title}". Review their profile and approve.`,
+      link: '/landlord/dashboard',
+      data: {
+        requestId: doc._id.toString(),
+        propertyId: house._id.toString(),
+        agentId: agentUserId,
+      },
     });
 
     return this.populateRequest(doc._id.toString());
@@ -145,7 +163,7 @@ export class PropertyManagementService {
       .find({ landlordId: new Types.ObjectId(landlordUserId) })
       .sort({ createdAt: -1 })
       .populate('propertyId', 'title location price images')
-      .populate('agentId', 'name email avatarUrl verified')
+      .populate('agentId', 'name email avatarUrl verified bio phone')
       .lean()
       .exec();
   }
@@ -183,6 +201,33 @@ export class PropertyManagementService {
     request.responseNote = dto.responseNote;
     request.respondedAt = new Date();
     await request.save();
+
+    // Tell the agent the outcome of their request.
+    if (
+      dto.status === ManagementRequestStatus.Accepted ||
+      dto.status === ManagementRequestStatus.Rejected
+    ) {
+      const house = await this.houseModel
+        .findById(request.propertyId)
+        .select('title')
+        .lean()
+        .exec();
+      const approved = dto.status === ManagementRequestStatus.Accepted;
+      await this.notificationsService.create({
+        userId: request.agentId.toString(),
+        type: NotificationType.ManagementResponse,
+        title: approved ? 'Management request approved' : 'Management request declined',
+        body: approved
+          ? `You can now manage "${house?.title ?? 'the property'}" — talk to house hunters and verify on-site.`
+          : `Your request to manage "${house?.title ?? 'the property'}" was declined.`,
+        link: '/agent/dashboard',
+        data: {
+          requestId: request._id.toString(),
+          propertyId: request.propertyId.toString(),
+          status: dto.status,
+        },
+      });
+    }
 
     return this.populateRequest(requestId);
   }
@@ -254,6 +299,38 @@ export class PropertyManagementService {
     });
 
     await this.houseModel.findByIdAndUpdate(house._id, { $inc: { viewCount: 1 } }).exec();
+
+    // Notify the owner + every managing agent so they can follow up the viewer.
+    const viewerLabel = viewerName || 'Someone';
+    const baseData = {
+      propertyId: house._id.toString(),
+      leadId: lead._id.toString(),
+      viewerId: viewerId ?? null,
+      viewerName: viewerName ?? null,
+    };
+    const viewBody = `${viewerLabel} viewed "${house.title}". Follow up from your leads.`;
+
+    if (landlordId.toString() !== viewerId) {
+      await this.notificationsService.create({
+        userId: landlordId.toString(),
+        type: NotificationType.PropertyView,
+        title: 'New property view',
+        body: viewBody,
+        link: '/landlord/dashboard',
+        data: baseData,
+      });
+    }
+
+    const agentRecipients = agentIds
+      .map((id) => id.toString())
+      .filter((id) => id !== viewerId);
+    await this.notificationsService.createMany(agentRecipients, {
+      type: NotificationType.PropertyView,
+      title: 'New property view',
+      body: viewBody,
+      link: '/agent/dashboard',
+      data: baseData,
+    });
 
     return {
       recorded: true,

@@ -622,7 +622,7 @@ export class HousesController {
   @UseInterceptors(FileFieldsInterceptor([{ name: 'taggedPhotos', maxCount: GPS_PHOTO_MAX }]))
   @ApiBearerAuth('access-token')
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Upload GPS-captured photos for an existing listing (Nestin Capture)' })
+  @ApiOperation({ summary: 'Upload GPS-captured photos for an existing listing (Flowcheq Capture)' })
   async uploadGpsCapturedPhotos(
     @Param('id') id: string,
     @CurrentUser() user: RequestUser,
@@ -675,7 +675,7 @@ export class HousesController {
           gps?.lat != null && gps?.lng != null && !Number.isNaN(gps.lat) && !Number.isNaN(gps.lng);
         if (!hasGps) {
           throw new BadRequestException(
-            `Photo ${index + 1} must include GPS coordinates from Nestin Capture.`,
+            `Photo ${index + 1} must include GPS coordinates from Flowcheq Capture.`,
           );
         }
         const url = await this.cloudinaryService.uploadToCloudinary(

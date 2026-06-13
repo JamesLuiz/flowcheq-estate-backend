@@ -13,6 +13,7 @@ import {
 import { House, HouseSchema } from '../houses/schemas/house.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { AuthModule } from '../auth/auth.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { AuthModule } from '../auth/auth.module';
       { name: User.name, schema: UserSchema },
     ]),
     forwardRef(() => AuthModule),
+    NotificationsModule,
   ],
   controllers: [PropertyManagementController],
   providers: [PropertyManagementService],

@@ -81,6 +81,48 @@ export class UsersService {
     return this.userModel.findById(id).exec();
   }
 
+  async updateYouverifySession(
+    userId: string,
+    fields: {
+      youverifyReference?: string;
+      youverifyCustomerId?: string;
+      youverifyStatus?: User['youverifyStatus'];
+      youverifyPayload?: Record<string, unknown>;
+    },
+  ) {
+    const updated = await this.userModel
+      .findByIdAndUpdate(userId, { $set: fields }, { new: true })
+      .exec();
+    if (!updated) throw new NotFoundException('User not found');
+    return this.toSafeUser(updated);
+  }
+
+  async markYouverifyVerified(
+    userId: string,
+    fields: {
+      youverifyCustomerId?: string;
+      youverifyPayload?: Record<string, unknown>;
+    },
+  ) {
+    const updated = await this.userModel
+      .findByIdAndUpdate(
+        userId,
+        {
+          $set: {
+            ...fields,
+            youverifyStatus: 'verified',
+            youverifyVerifiedAt: new Date(),
+            verified: true,
+            verificationStatus: 'approved',
+          },
+        },
+        { new: true },
+      )
+      .exec();
+    if (!updated) throw new NotFoundException('User not found');
+    return this.toSafeUser(updated);
+  }
+
   async updateUserProfile(id: string, payload: Partial<User>) {
     const updated = await this.userModel
       .findByIdAndUpdate(id, { $set: payload }, { new: true })

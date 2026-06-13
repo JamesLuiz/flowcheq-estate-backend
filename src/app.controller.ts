@@ -19,4 +19,10 @@ export class AppController {
   getHello(): string {
     return this.appService.getHello();
   }
+
+  @Get('health')
+  @ApiOperation({ summary: 'Docker / load-balancer health probe' })
+  health() {
+    return { status: 'ok', service: 'house-me-api' };
+  }
 }

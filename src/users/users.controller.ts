@@ -548,7 +548,7 @@ export class UsersController {
         walletId: wallet.customerCode,
       },
       customizations: {
-        title: 'House Me - Fund Virtual Account',
+        title: 'Flowcheq Estate - Fund Virtual Account',
         description: `Fund your virtual account with ₦${body.amount.toLocaleString()}`,
         logo: 'https://house-me.vercel.app/logo.png',
       },

@@ -10,6 +10,7 @@ export enum UserRole {
   User = 'user',
   HouseHunter = 'house_hunter',
   Admin = 'admin',
+  Lawyer = 'lawyer',
   Company = 'company', // Real Estate Company
 }
 
@@ -208,6 +209,25 @@ export class User {
 
   @Prop()
   guarantorRelationship?: string;
+
+  /** Youverify identity verification (account KYC — separate from listing verification) */
+  @Prop()
+  youverifyCustomerId?: string;
+
+  @Prop()
+  youverifyReference?: string;
+
+  @Prop({
+    enum: ['not_started', 'pending', 'in_progress', 'verified', 'failed'],
+    default: 'not_started',
+  })
+  youverifyStatus?: 'not_started' | 'pending' | 'in_progress' | 'verified' | 'failed';
+
+  @Prop()
+  youverifyVerifiedAt?: Date;
+
+  @Prop({ type: Object })
+  youverifyPayload?: Record<string, unknown>;
 }
 
 export type UserDocument = HydratedDocument<User>;

@@ -75,7 +75,7 @@ export class EmailService {
       'noreply@houseme.com';
 
     const mailOptions: any = {
-      from: `"House Me" <${fromEmail}>`,
+      from: `"Flowcheq Estate" <${fromEmail}>`,
       to: options.to,
       subject: options.subject,
     };
@@ -105,10 +105,10 @@ export class EmailService {
     const verifyUrl = `${this.frontendUrl}/auth/verify-email?token=${token}`;
     return this.sendEmail({
       to: email,
-      subject: 'Verify your Nestin Estate email',
+      subject: 'Verify your Flowcheq Estate email',
       html: `
         <p>Hello ${name || 'there'},</p>
-        <p>Please verify your email to list properties and use landlord features on Nestin Estate.</p>
+        <p>Please verify your email to list properties and use landlord features on Flowcheq Estate.</p>
         <p><a href="${verifyUrl}">Verify email address</a></p>
         <p>This link expires in 24 hours.</p>
         <p style="word-break:break-all;color:#1A3C34;">${verifyUrl}</p>
@@ -157,7 +157,7 @@ export class EmailService {
               <p>If you didn't request a password reset, please ignore this email.</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -173,7 +173,7 @@ export class EmailService {
     }
 
     const mailOptions = {
-      from: `"House Me" <${fromEmail}>`,
+      from: `"Flowcheq Estate" <${fromEmail}>`,
       to: email,
       subject: 'Reset Your Password',
       html: emailBody,
@@ -246,10 +246,10 @@ export class EmailService {
     // Role-specific content
     const roleContent = {
       user: {
-        subject: `Welcome to House Me, ${name}! 🏠`,
+        subject: `Welcome to Flowcheq Estate, ${name}! 🏠`,
         headerColor: '#16a34a',
-        headerText: 'Welcome to House Me! 🏠',
-        intro: "Thank you for joining House Me! We're excited to help you find your perfect home.",
+        headerText: 'Welcome to Flowcheq Estate! 🏠',
+        intro: "Thank you for joining Flowcheq Estate! We're excited to help you find your perfect home.",
         features: `
           <div class="feature">🏘️ Browse thousands of property listings</div>
           <div class="feature">📅 Schedule property viewings</div>
@@ -263,8 +263,8 @@ export class EmailService {
       agent: {
         subject: `Welcome Agent ${name}! Start Listing Properties 🏢`,
         headerColor: '#3b82f6',
-        headerText: 'Welcome to House Me, Agent! 🏢',
-        intro: "Congratulations on joining House Me as an Agent! You're now part of Nigeria's premier property marketplace.",
+        headerText: 'Welcome to Flowcheq Estate, Agent! 🏢',
+        intro: "Congratulations on joining Flowcheq Estate as an Agent! You're now part of Nigeria's premier property marketplace.",
         features: `
           <div class="feature">🏠 List unlimited properties for sale or rent</div>
           <div class="feature">📊 Track your property performance</div>
@@ -286,8 +286,8 @@ export class EmailService {
       landlord: {
         subject: `Welcome Landlord ${name}! List Your Properties 🏡`,
         headerColor: '#8b5cf6',
-        headerText: 'Welcome to House Me, Landlord! 🏡',
-        intro: "Welcome to House Me! As a landlord, you can now list your properties and connect with potential tenants.",
+        headerText: 'Welcome to Flowcheq Estate, Landlord! 🏡',
+        intro: "Welcome to Flowcheq Estate! As a landlord, you can now list your properties and connect with potential tenants.",
         features: `
           <div class="feature">🏠 List your properties for rent or sale</div>
           <div class="feature">📊 Manage all your listings in one place</div>
@@ -351,7 +351,7 @@ export class EmailService {
               <p>📱 WhatsApp: +234 915 208 7229</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
               <p>Finding your dream home in Nigeria.</p>
             </div>
           </div>
@@ -365,7 +365,7 @@ export class EmailService {
     }
 
     const mailOptions = {
-      from: `"House Me" <${fromEmail}>`,
+      from: `"Flowcheq Estate" <${fromEmail}>`,
       to: email,
       subject: content.subject,
       html: emailBody,
@@ -467,7 +467,7 @@ export class EmailService {
               <p>📱 WhatsApp: +234 915 208 7229</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -480,7 +480,7 @@ export class EmailService {
     }
 
     const mailOptions = {
-      from: `"House Me" <${fromEmail}>`,
+      from: `"Flowcheq Estate" <${fromEmail}>`,
       to: email,
       subject,
       html: emailBody,
@@ -504,8 +504,8 @@ export class EmailService {
     rejectionReason?: string,
   ) {
     const subject = status === 'approved' 
-      ? 'Verification Approved - House Me' 
-      : 'Verification Rejected - House Me';
+      ? 'Verification Approved - Flowcheq Estate' 
+      : 'Verification Rejected - Flowcheq Estate';
 
     const fromEmail =
       this.configService.get<string>('SMTP_FROM') ||
@@ -539,11 +539,11 @@ export class EmailService {
               ${rejectionReason ? `<p><strong>Reason:</strong> ${rejectionReason}</p>` : ''}
               <p><strong>Message:</strong> ${message}</p>
               ${status === 'approved' 
-                ? '<p>You can now upload properties on House Me. Thank you for your patience!</p>'
+                ? '<p>You can now upload properties on Flowcheq Estate. Thank you for your patience!</p>'
                 : '<p>Please submit a new verification request with valid documents that meet our requirements.</p>'}
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -558,7 +558,7 @@ export class EmailService {
     }
 
     const mailOptions = {
-      from: `"House Me" <${fromEmail}>`,
+      from: `"Flowcheq Estate" <${fromEmail}>`,
       to: email,
       subject: subject,
       html: emailBody,
@@ -645,7 +645,7 @@ export class EmailService {
               <p>📱 WhatsApp: +234 915 208 7229</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
               <p>2-to-Tango Shared Living</p>
             </div>
           </div>
@@ -706,7 +706,7 @@ export class EmailService {
               </div>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -723,7 +723,7 @@ export class EmailService {
     // Send to tenant
     try {
       const tenantInfo = await this.transporter.sendMail({
-        from: `"House Me" <${fromEmail}>`,
+        from: `"Flowcheq Estate" <${fromEmail}>`,
         to: tenantEmail,
         subject: `✅ Slot Booked - ${propertyTitle}`,
         html: tenantEmailBody,
@@ -738,7 +738,7 @@ export class EmailService {
     // Send to agent/landlord
     try {
       const agentInfo = await this.transporter.sendMail({
-        from: `"House Me" <${fromEmail}>`,
+        from: `"Flowcheq Estate" <${fromEmail}>`,
         to: agentEmail,
         subject: `🎉 New Slot Booking - ${propertyTitle}`,
         html: agentEmailBody,
@@ -808,7 +808,7 @@ export class EmailService {
               <p>📧 Email: housemedream@gmail.com</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -858,7 +858,7 @@ export class EmailService {
               </div>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -875,7 +875,7 @@ export class EmailService {
     // Send to user
     try {
       const userInfo = await this.transporter.sendMail({
-        from: `"House Me" <${fromEmail}>`,
+        from: `"Flowcheq Estate" <${fromEmail}>`,
         to: userEmail,
         subject: `📅 Viewing Request Submitted - ${propertyTitle}`,
         html: userEmailBody,
@@ -890,7 +890,7 @@ export class EmailService {
     // Send to agent
     try {
       const agentInfo = await this.transporter.sendMail({
-        from: `"House Me" <${fromEmail}>`,
+        from: `"Flowcheq Estate" <${fromEmail}>`,
         to: agentEmail,
         subject: `📅 New Viewing Request - ${propertyTitle}`,
         html: agentEmailBody,
@@ -966,7 +966,7 @@ export class EmailService {
               <p>📧 Email: housemedream@gmail.com</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
               <p>2-to-Tango Shared Living</p>
             </div>
           </div>
@@ -981,7 +981,7 @@ export class EmailService {
 
     try {
       const info = await this.transporter.sendMail({
-        from: `"House Me" <${fromEmail}>`,
+        from: `"Flowcheq Estate" <${fromEmail}>`,
         to: existingTenantEmail,
         subject: `👋 New Co-Tenant - ${propertyTitle}`,
         html: emailBody,
@@ -1031,7 +1031,7 @@ export class EmailService {
               <p>If you didn't request this reset, please ignore this email and contact support if you have concerns.</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -1096,7 +1096,7 @@ export class EmailService {
               
               <div class="alert">
                 <p><strong>Your account is not yet verified!</strong></p>
-                <p>To start listing properties on House Me, you need to complete the verification process.</p>
+                <p>To start listing properties on Flowcheq Estate, you need to complete the verification process.</p>
               </div>
               
               <div class="benefits">
@@ -1127,7 +1127,7 @@ export class EmailService {
               <p>📱 WhatsApp: +234 915 208 7229</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -1141,9 +1141,9 @@ export class EmailService {
 
     try {
       const info = await this.transporter.sendMail({
-        from: `"House Me" <${fromEmail}>`,
+        from: `"Flowcheq Estate" <${fromEmail}>`,
         to: email,
-        subject: `⚠️ Complete Your Verification - House Me`,
+        subject: `⚠️ Complete Your Verification - Flowcheq Estate`,
         html: emailBody,
       });
       this.logger.log(`Verification reminder sent to: ${email}`);
@@ -1195,7 +1195,7 @@ export class EmailService {
               <p>📱 WhatsApp: +234 915 208 7229</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -1209,9 +1209,9 @@ export class EmailService {
 
     try {
       const info = await this.transporter.sendMail({
-        from: `"House Me" <${fromEmail}>`,
+        from: `"Flowcheq Estate" <${fromEmail}>`,
         to: email,
-        subject: `⚠️ Account Suspended - House Me`,
+        subject: `⚠️ Account Suspended - Flowcheq Estate`,
         html: emailBody,
       });
       this.logger.log(`Suspension email sent to: ${email}`);
@@ -1263,7 +1263,7 @@ export class EmailService {
               <p>📱 WhatsApp: +234 915 208 7229</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -1277,9 +1277,9 @@ export class EmailService {
 
     try {
       const info = await this.transporter.sendMail({
-        from: `"House Me" <${fromEmail}>`,
+        from: `"Flowcheq Estate" <${fromEmail}>`,
         to: email,
-        subject: `🚫 Account Banned - House Me`,
+        subject: `🚫 Account Banned - Flowcheq Estate`,
         html: emailBody,
       });
       this.logger.log(`Ban email sent to: ${email}`);
@@ -1331,7 +1331,7 @@ export class EmailService {
               <p>📱 WhatsApp: +234 915 208 7229</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -1345,9 +1345,9 @@ export class EmailService {
 
     try {
       const info = await this.transporter.sendMail({
-        from: `"House Me" <${fromEmail}>`,
+        from: `"Flowcheq Estate" <${fromEmail}>`,
         to: email,
-        subject: `✅ Account Reactivated - House Me`,
+        subject: `✅ Account Reactivated - Flowcheq Estate`,
         html: emailBody,
       });
       this.logger.log(`Activation email sent to: ${email}`);
@@ -1399,7 +1399,7 @@ export class EmailService {
               <p>📱 WhatsApp: +234 915 208 7229</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -1413,9 +1413,9 @@ export class EmailService {
 
     try {
       const info = await this.transporter.sendMail({
-        from: `"House Me" <${fromEmail}>`,
+        from: `"Flowcheq Estate" <${fromEmail}>`,
         to: email,
-        subject: `Account Deleted - House Me`,
+        subject: `Account Deleted - Flowcheq Estate`,
         html: emailBody,
       });
       this.logger.log(`Deletion email sent to: ${email}`);
@@ -1466,7 +1466,7 @@ export class EmailService {
               <p>📱 WhatsApp: +234 915 208 7229</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -1480,9 +1480,9 @@ export class EmailService {
 
     try {
       const info = await this.transporter.sendMail({
-        from: `"House Me" <${fromEmail}>`,
+        from: `"Flowcheq Estate" <${fromEmail}>`,
         to: email,
-        subject: `⚠️ Properties Delisted - House Me`,
+        subject: `⚠️ Properties Delisted - Flowcheq Estate`,
         html: emailBody,
       });
       this.logger.log(`Delist email sent to: ${email}`);
@@ -1539,7 +1539,7 @@ export class EmailService {
               <p>If you have any questions, please don't hesitate to contact us.</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -1553,9 +1553,9 @@ export class EmailService {
 
     try {
       const info = await this.transporter.sendMail({
-        from: `"House Me" <${fromEmail}>`,
+        from: `"Flowcheq Estate" <${fromEmail}>`,
         to: email,
-        subject: '✅ Viewing Payment Confirmed - House Me',
+        subject: '✅ Viewing Payment Confirmed - Flowcheq Estate',
         html: emailBody,
       });
       this.logger.log(`Payment confirmation email sent to: ${email}`);
@@ -1611,10 +1611,10 @@ export class EmailService {
                 <p><strong>Platform Fee:</strong> ₦${platformFee.toLocaleString()}</p>
               </div>
               <p>The amount has been added to your wallet balance and is available for withdrawal.</p>
-              <p>Thank you for using House Me!</p>
+              <p>Thank you for using Flowcheq Estate!</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -1628,9 +1628,9 @@ export class EmailService {
 
     try {
       const info = await this.transporter.sendMail({
-        from: `"House Me" <${fromEmail}>`,
+        from: `"Flowcheq Estate" <${fromEmail}>`,
         to: email,
-        subject: '💰 Viewing Payment Received - House Me',
+        subject: '💰 Viewing Payment Received - Flowcheq Estate',
         html: emailBody,
       });
       this.logger.log(`Payment received email sent to: ${email}`);
@@ -1686,10 +1686,10 @@ export class EmailService {
                 <p><strong>End Date:</strong> ${new Date(endDate).toLocaleDateString()}</p>
               </div>
               <p>Your property is now being promoted and will appear in featured listings!</p>
-              <p>Thank you for using House Me!</p>
+              <p>Thank you for using Flowcheq Estate!</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -1703,9 +1703,9 @@ export class EmailService {
 
     try {
       const info = await this.transporter.sendMail({
-        from: `"House Me" <${fromEmail}>`,
+        from: `"Flowcheq Estate" <${fromEmail}>`,
         to: email,
-        subject: '✅ Promotion Payment Confirmed - House Me',
+        subject: '✅ Promotion Payment Confirmed - Flowcheq Estate',
         html: emailBody,
       });
       this.logger.log(`Promotion payment confirmation email sent to: ${email}`);
@@ -1756,7 +1756,7 @@ export class EmailService {
               <p>If you didn't request this withdrawal, please ignore this email and contact support immediately.</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -1774,7 +1774,7 @@ export class EmailService {
       await this.transporter.sendMail({
         from: fromEmail,
         to: email,
-        subject: 'Withdrawal OTP - House Me',
+        subject: 'Withdrawal OTP - Flowcheq Estate',
         html: emailBody,
       });
       this.logger.log(`Withdrawal OTP email sent to: ${email}`);
@@ -1820,7 +1820,7 @@ export class EmailService {
               <p>We will notify you once the transfer has been completed.</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -1834,9 +1834,9 @@ export class EmailService {
 
     try {
       await this.transporter.sendMail({
-        from: `"House Me" <${fromEmail}>`,
+        from: `"Flowcheq Estate" <${fromEmail}>`,
         to: email,
-        subject: 'Withdrawal Processing - House Me',
+        subject: 'Withdrawal Processing - Flowcheq Estate',
         html: emailBody,
       });
       this.logger.log(`Withdrawal processing email sent to: ${email}`);
@@ -1880,10 +1880,10 @@ export class EmailService {
                 <p><strong>Account:</strong> ****${accountNumber.slice(-4)}</p>
               </div>
               <p>The funds should reflect in your account shortly.</p>
-              <p>Thank you for using House Me!</p>
+              <p>Thank you for using Flowcheq Estate!</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -1897,9 +1897,9 @@ export class EmailService {
 
     try {
       await this.transporter.sendMail({
-        from: `"House Me" <${fromEmail}>`,
+        from: `"Flowcheq Estate" <${fromEmail}>`,
         to: email,
-        subject: '✅ Withdrawal Successful - House Me',
+        subject: '✅ Withdrawal Successful - Flowcheq Estate',
         html: emailBody,
       });
       this.logger.log(`Withdrawal success email sent to: ${email}`);
@@ -1949,7 +1949,7 @@ export class EmailService {
               <p>📧 Email: housemedream@gmail.com</p>
             </div>
             <div class="footer">
-              <p>&copy; ${new Date().getFullYear()} House Me. All rights reserved.</p>
+              <p>&copy; ${new Date().getFullYear()} Flowcheq Estate. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -1963,9 +1963,9 @@ export class EmailService {
 
     try {
       await this.transporter.sendMail({
-        from: `"House Me" <${fromEmail}>`,
+        from: `"Flowcheq Estate" <${fromEmail}>`,
         to: email,
-        subject: '❌ Withdrawal Failed - House Me',
+        subject: '❌ Withdrawal Failed - Flowcheq Estate',
         html: emailBody,
       });
       this.logger.log(`Withdrawal failed email sent to: ${email}`);

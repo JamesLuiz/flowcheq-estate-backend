@@ -95,7 +95,7 @@ export class PhotoLocationVerificationService {
           ? this.googleMaps.googleMapsLink(expectedCoords.lat, expectedCoords.lng)
           : null,
         message:
-          'No GPS metadata in photo. Retake with location services enabled on your camera (Nestin Capture recommended).',
+          'No GPS metadata in photo. Retake with location services enabled on your camera (Flowcheq Capture recommended).',
       };
     }
 

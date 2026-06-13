@@ -52,7 +52,7 @@ export class FlutterwaveService {
     try {
       // Default customizations for promotions
       const defaultCustomizations = {
-        title: 'House Me - Property Promotion',
+        title: 'Flowcheq Estate - Property Promotion',
         description: `Promote property for ${data.amount} Naira`,
         logo: 'https://house-me.vercel.app/logo.png',
       };

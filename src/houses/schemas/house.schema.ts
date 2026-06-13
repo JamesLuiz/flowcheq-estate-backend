@@ -239,11 +239,61 @@ export class House {
 
   @Prop({ type: Object })
   photoLocationVerification?: Record<string, unknown>;
+
+  /** C of O details entered by lawyer on approval — used for duplicate listing detection */
+  @Prop({
+    type: {
+      certificateNumber: { type: String, required: true },
+      ownerName: { type: String, required: true },
+      plotNumber: { type: String },
+      surveyNumber: { type: String },
+      location: { type: String },
+      issueDate: { type: Date },
+      registeredAt: { type: String },
+      lga: { type: String },
+      state: { type: String },
+    },
+    _id: false,
+  })
+  cofoDetails?: {
+    certificateNumber: string;
+    ownerName: string;
+    plotNumber?: string;
+    surveyNumber?: string;
+    location?: string;
+    issueDate?: Date;
+    registeredAt?: string;
+    lga?: string;
+    state?: string;
+  };
+
+  @Prop({
+    type: {
+      status: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+        default: 'pending',
+      },
+      reviewedBy: { type: MongooseSchema.Types.ObjectId, ref: 'User' },
+      reviewedAt: { type: Date },
+      rejectionReason: { type: String },
+      notes: { type: String },
+    },
+    _id: false,
+  })
+  lawyerReview?: {
+    status: 'pending' | 'approved' | 'rejected';
+    reviewedBy?: Types.ObjectId;
+    reviewedAt?: Date;
+    rejectionReason?: string;
+    notes?: string;
+  };
 }
 
 export type HouseDocument = HydratedDocument<House>;
 export const HouseSchema = SchemaFactory.createForClass(House);
 
+HouseSchema.index({ 'cofoDetails.certificateNumber': 1 }, { sparse: true });
 HouseSchema.index(
   { price: 1, location: 1, type: 1 },
   { name: 'house_search_index' },

@@ -8,4 +8,9 @@ export class CreateManagementRequestDto {
   @IsString()
   @MaxLength(500)
   message?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  bio?: string;
 }

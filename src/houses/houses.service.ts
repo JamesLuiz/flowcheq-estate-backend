@@ -85,6 +85,8 @@ export class HousesService {
       agentId: new Types.ObjectId(agentId),
       inspectionFeeAmount: INSPECTION_FEE_NGN,
       inspectionFeePaid: false,
+      verificationStatus: 'pending_verification',
+      lawyerReview: { status: 'pending' },
       gpsVerifiedPhotos: (dto.taggedPhotos ?? []).every(
         (p: any) => p.gpsVerified || (p.lat != null && p.lng != null),
       ),
@@ -116,7 +118,12 @@ export class HousesService {
   }
 
   async findAll(filters: FilterHousesDto) {
-    const query: FilterQuery<HouseDocument> = { deleted: { $ne: true }, flagged: { $ne: true } };
+    const query: FilterQuery<HouseDocument> = {
+      deleted: { $ne: true },
+      flagged: { $ne: true },
+      verificationStatus: 'verified',
+      status: { $ne: 'archived' },
+    };
     const escapeRegex = (value: string) =>
       value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 

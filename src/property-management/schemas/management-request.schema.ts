@@ -22,6 +22,10 @@ export class ManagementRequest {
   @Prop({ trim: true })
   message?: string;
 
+  /** Agent's pitch/bio sent to the landlord for review before approval. */
+  @Prop({ trim: true })
+  bio?: string;
+
   @Prop({
     enum: ManagementRequestStatus,
     default: ManagementRequestStatus.Pending,

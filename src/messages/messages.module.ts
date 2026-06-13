@@ -5,12 +5,14 @@ import { MessagesService } from './messages.service';
 import { Message, MessageSchema } from './schemas/message.schema';
 import { UsersModule } from '../users/users.module';
 import { HousesModule } from '../houses/houses.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Message.name, schema: MessageSchema }]),
     forwardRef(() => UsersModule),
     forwardRef(() => HousesModule),
+    NotificationsModule,
   ],
   controllers: [MessagesController],
   providers: [MessagesService],

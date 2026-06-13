@@ -5,6 +5,10 @@ import { Message, MessageDocument } from './schemas/message.schema';
 import { SendMessageDto } from './dto/send-message.dto';
 import { UsersService } from '../users/users.service';
 import { HousesService } from '../houses/houses.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/schemas/notification.schema';
+import { RealtimeService } from '../realtime/realtime.service';
+import { UserRole } from '../users/schemas/user.schema';
 
 // Pusher is optional - install with: npm install pusher
 let Pusher: any = null;
@@ -24,6 +28,8 @@ export class MessagesService {
     private readonly messageModel: Model<MessageDocument>,
     private readonly usersService: UsersService,
     private readonly housesService: HousesService,
+    private readonly notificationsService: NotificationsService,
+    private readonly realtimeService: RealtimeService,
   ) {
     // Initialize Pusher if credentials are available
     // Pusher uses WebSockets but it's a managed service - clients connect to Pusher's servers
@@ -63,6 +69,18 @@ export class MessagesService {
     const sender = await this.usersService.findById(senderId);
     if (!sender) {
       throw new NotFoundException('Sender not found');
+    }
+
+    // House hunters must verify their account before they can contact anyone.
+    const hunterRoles = new Set<UserRole>([
+      UserRole.User,
+      UserRole.Tenant,
+      UserRole.HouseHunter,
+    ]);
+    if (hunterRoles.has(sender.role as UserRole) && !sender.emailVerified) {
+      throw new ForbiddenException(
+        'Please verify your account (email) before messaging on the platform.',
+      );
     }
 
     // Validate co-tenant messaging (both must have booked the same property, OR sender is the agent/landlord)
@@ -123,6 +141,28 @@ export class MessagesService {
         this.logger.error('Failed to send Pusher notification:', error);
       }
     }
+
+    // Socket.IO realtime chat delivery (works alongside Pusher).
+    this.realtimeService.emitToUser(dto.receiverId, 'chat:message', {
+      id: savedMessage._id.toString(),
+      senderId,
+      senderName: sender.name,
+      senderAvatar: sender.avatarUrl,
+      content: dto.content,
+      houseId: dto.houseId,
+      conversationType: dto.conversationType || 'tenant-agent',
+      createdAt: new Date(),
+    });
+
+    // Persistent notification + bell badge for the receiver.
+    await this.notificationsService.create({
+      userId: dto.receiverId,
+      type: NotificationType.Message,
+      title: `New message from ${sender.name}`,
+      body: dto.content.length > 80 ? `${dto.content.slice(0, 80)}…` : dto.content,
+      link: '/messages',
+      data: { senderId, houseId: dto.houseId ?? null },
+    });
 
     return this.toMessageResponse(savedMessage, sender, receiver, senderId);
   }

@@ -24,6 +24,11 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 
 import { PropertyManagementModule } from './property-management/property-management.module';
 import { LocationVerificationModule } from './location-verification/location-verification.module';
+import { PartnerLeadsModule } from './partner-leads/partner-leads.module';
+import { LegalReviewModule } from './legal-review/legal-review.module';
+import { YouverifyModule } from './youverify/youverify.module';
+import { RealtimeModule } from './realtime/realtime.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -58,6 +63,11 @@ import { LocationVerificationModule } from './location-verification/location-ver
     SubscriptionsModule,
     PropertyManagementModule,
     LocationVerificationModule,
+    PartnerLeadsModule,
+    LegalReviewModule,
+    YouverifyModule,
+    RealtimeModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

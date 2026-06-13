@@ -36,8 +36,8 @@ async function bootstrap() {
 
   // Swagger / OpenAPI setup
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('House-me API')
-    .setDescription('API documentation for the House-me backend')
+    .setTitle('Flowcheq Estate API')
+    .setDescription('API documentation for the Flowcheq Estate backend')
     .setVersion('1.0')
     .addTag('Health', 'Service health and readiness')
     .addTag('Auth', 'Authentication and account security')

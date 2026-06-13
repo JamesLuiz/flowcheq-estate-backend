@@ -42,6 +42,21 @@ export class ViewingsService {
       throw new NotFoundException('Property not found');
     }
 
+    // Registered house hunters must verify their account before scheduling.
+    if (dto.userId) {
+      const requester = await this.usersService.findById(dto.userId);
+      const hunterRoles = ['user', 'tenant', 'house_hunter'];
+      if (
+        requester &&
+        hunterRoles.includes(requester.role) &&
+        !requester.emailVerified
+      ) {
+        throw new ForbiddenException(
+          'Please verify your account (email) before scheduling an inspection.',
+        );
+      }
+    }
+
     const agent = await this.usersService.findById(dto.agentId);
     if (!agent) {
       throw new NotFoundException('Agent not found');
@@ -516,7 +531,7 @@ export class ViewingsService {
           agentId: agent._id?.toString() || agent.id,
         },
         customizations: {
-          title: 'House Me - Inspection Fee Payment',
+          title: 'Flowcheq Estate - Inspection Fee Payment',
           description: `Property inspection fee payment - ${house.title || 'Property'}`,
           logo: 'https://house-me.vercel.app/logo.png',
         },
