@@ -1,7 +1,7 @@
 {
-  "name": "backend",
+  "name": "flowcheq-estate-backend",
   "version": "0.0.1",
-  "description": "",
+  "description": "Flowcheq Estate API (NestJS)",
   "author": "",
   "private": true,
   "license": "UNLICENSED",
