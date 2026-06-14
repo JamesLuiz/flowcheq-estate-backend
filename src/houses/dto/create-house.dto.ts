@@ -1,6 +1,7 @@
 import {
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsMongoId,
   IsNotEmpty,
@@ -81,6 +82,34 @@ export class CreateHouseDto {
   @Type(() => CoordinatesDto)
   @IsOptional()
   coordinates?: CoordinatesDto;
+
+  @ApiProperty({
+    example: 'ChIJN1t_tDeuEmsRUsoyG83frY4',
+    required: false,
+    description: 'Google Places place_id from landlord address autocomplete',
+  })
+  @IsString()
+  @IsOptional()
+  googlePlaceId?: string;
+
+  @ApiProperty({
+    example: '123 Main Street, Wuse 2, Abuja, Nigeria',
+    required: false,
+    description: 'Formatted address from Google Places',
+  })
+  @IsString()
+  @IsOptional()
+  formattedAddress?: string;
+
+  @ApiProperty({
+    example: 'places',
+    required: false,
+    enum: ['places', 'geocode', 'agent_gps'],
+    description: 'How listing coordinates were determined',
+  })
+  @IsIn(['places', 'geocode', 'agent_gps'])
+  @IsOptional()
+  coordinatesSource?: 'places' | 'geocode' | 'agent_gps';
 
   @ApiProperty({ example: 3, required: false })
   @IsInt()

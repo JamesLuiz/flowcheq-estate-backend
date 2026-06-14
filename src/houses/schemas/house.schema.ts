@@ -84,6 +84,39 @@ export class House {
   })
   coordinates?: Coordinates;
 
+  /** Google Places place_id from landlord address picker */
+  @Prop({ trim: true, index: true, sparse: true })
+  googlePlaceId?: string;
+
+  /** Canonical formatted address from Google Places */
+  @Prop({ trim: true })
+  formattedAddress?: string;
+
+  @Prop({
+    type: String,
+    enum: ['places', 'geocode', 'agent_gps'],
+  })
+  coordinatesSource?: 'places' | 'geocode' | 'agent_gps';
+
+  @Prop()
+  coordinatesUpdatedAt?: Date;
+
+  @Prop({
+    type: {
+      previousLat: { type: Number },
+      previousLng: { type: Number },
+      distanceMeters: { type: Number },
+      correctedAt: { type: Date },
+    },
+    _id: false,
+  })
+  coordinatesCorrection?: {
+    previousLat: number;
+    previousLng: number;
+    distanceMeters: number;
+    correctedAt: Date;
+  };
+
   @Prop({ type: Number, min: 0 })
   bedrooms?: number;
 

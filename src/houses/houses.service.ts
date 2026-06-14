@@ -23,6 +23,7 @@ import {
   type TaggedPhotoInput,
 } from './listing-validation.util';
 import { INSPECTION_FEE_NGN } from '../common/listing-requirements';
+import { resolveAgentGpsCoordinateUpdate } from '../common/geo.util';
 
 const LISTING_OWNER_ROLES: UserRole[] = [
   UserRole.Landlord,
@@ -96,6 +97,14 @@ export class HousesService {
       houseData.amenities = dto.amenities
         .map((a) => String(a).trim().toLowerCase())
         .filter(Boolean);
+    }
+
+    if (!houseData.coordinatesSource) {
+      if (dto.googlePlaceId && dto.coordinates) {
+        houseData.coordinatesSource = 'places';
+      } else if (dto.coordinates) {
+        houseData.coordinatesSource = 'geocode';
+      }
     }
 
     // If it's a shared property, initialize availableSlots
@@ -422,21 +431,37 @@ export class HousesService {
 
     const imageUrls = taggedPhotos.map((p) => p.url);
 
+    const gpsUpdate = resolveAgentGpsCoordinateUpdate(
+      house.coordinates,
+      taggedPhotos,
+    );
+
+    const updatePayload: Record<string, unknown> = {
+      taggedPhotos,
+      images: imageUrls,
+      gpsVerifiedPhotos: taggedPhotos.every(
+        (p) =>
+          typeof p.lat === 'number' &&
+          typeof p.lng === 'number' &&
+          !Number.isNaN(p.lat) &&
+          !Number.isNaN(p.lng),
+      ),
+    };
+
+    if (gpsUpdate) {
+      updatePayload.coordinates = gpsUpdate.coordinates;
+      updatePayload.coordinatesSource = gpsUpdate.coordinatesSource;
+      updatePayload.coordinatesUpdatedAt = gpsUpdate.coordinatesUpdatedAt;
+      if (gpsUpdate.coordinatesCorrection) {
+        updatePayload.coordinatesCorrection = gpsUpdate.coordinatesCorrection;
+      }
+    }
+
     const updatedHouse = await this.houseModel
       .findByIdAndUpdate(
         new Types.ObjectId(houseId),
         {
-          $set: {
-            taggedPhotos,
-            images: imageUrls,
-            gpsVerifiedPhotos: taggedPhotos.every(
-              (p) =>
-                typeof p.lat === 'number' &&
-                typeof p.lng === 'number' &&
-                !Number.isNaN(p.lat) &&
-                !Number.isNaN(p.lng),
-            ),
-          },
+          $set: updatePayload,
         },
         { new: true },
       )
