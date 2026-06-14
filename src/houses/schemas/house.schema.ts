@@ -39,11 +39,16 @@ export class House {
   @Prop({ type: [String], default: [] })
   images: string[];
 
+  /** Cloudinary public_ids parallel to images[] (when uploaded via API) */
+  @Prop({ type: [String], default: [] })
+  imagePublicIds?: string[];
+
   // Tagged photos with room types and descriptions
   @Prop({
     type: [
       {
         url: { type: String, required: true },
+        publicId: { type: String },
         tag: { type: String, required: true },
         description: { type: String },
         lat: { type: Number },
@@ -58,6 +63,7 @@ export class House {
   })
   taggedPhotos?: Array<{
     url: string;
+    publicId?: string;
     tag: string;
     description?: string;
     lat?: number;
@@ -176,6 +182,9 @@ export class House {
   @Prop({ type: String })
   proofOfAddress?: string;
 
+  @Prop({ type: String })
+  proofOfAddressPublicId?: string;
+
   @Prop({
     type: [
       {
@@ -185,6 +194,7 @@ export class House {
           required: true,
         },
         url: { type: String, required: true },
+        publicId: { type: String },
         uploadedAt: { type: Date, default: Date.now },
         _id: false,
       },
@@ -194,6 +204,7 @@ export class House {
   ownershipDocuments?: Array<{
     type: 'c_of_o' | 'utility_bill' | 'deed' | 'governors_consent' | 'land_survey';
     url: string;
+    publicId?: string;
     uploadedAt?: Date;
   }>;
 

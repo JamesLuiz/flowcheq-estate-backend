@@ -37,6 +37,7 @@ import {
   GPS_PHOTO_MIN,
   OwnershipDocumentType,
 } from '../common/listing-requirements';
+import { Types } from 'mongoose';
 
 @Controller(['houses', 'properties'])
 @ApiTags('Houses')
@@ -192,7 +193,12 @@ export class HousesController {
     }
 
     let imageUrls: string[] = [];
+    let imagePublicIds: string[] = [];
     let proofOfAddressUrl: string | undefined;
+    let proofOfAddressPublicId: string | undefined;
+
+    const pendingHouseId = new Types.ObjectId();
+    const houseId = pendingHouseId.toString();
 
     // Upload proof of address if provided
     if (proofFile) {
@@ -216,10 +222,14 @@ export class HousesController {
         );
       }
 
-      proofOfAddressUrl = await this.cloudinaryService.uploadToCloudinary(
+      const proofUpload = await this.cloudinaryService.uploadForHouse(
+        houseId,
         proofFile.buffer,
         proofFile.originalname,
+        'documents',
       );
+      proofOfAddressUrl = proofUpload.url;
+      proofOfAddressPublicId = proofUpload.publicId;
     }
 
     if (taggedPhotoFiles.length > GPS_PHOTO_MAX) {
@@ -279,13 +289,13 @@ export class HousesController {
         }
       }
 
-      const uploadPromises = imageFiles.map((file) =>
-        this.cloudinaryService.uploadToCloudinary(
-          file.buffer,
-          file.originalname,
+      const uploadResults = await Promise.all(
+        imageFiles.map((file) =>
+          this.cloudinaryService.uploadForHouse(houseId, file.buffer, file.originalname, 'photos'),
         ),
       );
-      imageUrls = await Promise.all(uploadPromises);
+      imageUrls = uploadResults.map((r) => r.url);
+      imagePublicIds = uploadResults.map((r) => r.publicId);
     } else if (body.images) {
       // Fallback to URL strings if provided
       imageUrls = Array.isArray(body.images)
@@ -293,7 +303,7 @@ export class HousesController {
         : body.images.split(',').map((url: string) => url.trim()).filter(Boolean);
     }
 
-    let ownershipDocuments: Array<{ type: string; url: string; uploadedAt: Date }> = [];
+    let ownershipDocuments: Array<{ type: string; url: string; publicId?: string; uploadedAt: Date }> = [];
     if (ownershipDocFiles.length > 0) {
       const maxDocSize = 10 * 1024 * 1024;
       const allowedDocTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
@@ -305,10 +315,16 @@ export class HousesController {
         if (file.size > maxDocSize) {
           throw new BadRequestException('Ownership document exceeds 10MB');
         }
-        const url = await this.cloudinaryService.uploadToCloudinary(file.buffer, file.originalname);
+        const upload = await this.cloudinaryService.uploadForHouse(
+          houseId,
+          file.buffer,
+          file.originalname,
+          'ownership',
+        );
         ownershipDocuments.push({
           type: ownershipDocTypes[i],
-          url,
+          url: upload.url,
+          publicId: upload.publicId,
           uploadedAt: new Date(),
         });
       }
@@ -317,12 +333,18 @@ export class HousesController {
         dto.listingType === 'rent'
           ? OwnershipDocumentType.UtilityBill
           : OwnershipDocumentType.COfO;
-      ownershipDocuments.push({ type: fallbackType, url: proofOfAddressUrl, uploadedAt: new Date() });
+      ownershipDocuments.push({
+        type: fallbackType,
+        url: proofOfAddressUrl,
+        publicId: proofOfAddressPublicId,
+        uploadedAt: new Date(),
+      });
     }
 
     let taggedPhotos:
       | Array<{
           url: string;
+          publicId?: string;
           tag: string;
           description?: string;
           lat?: number;
@@ -353,16 +375,18 @@ export class HousesController {
         }
       }
 
-      const taggedPhotoUploadPromises = taggedPhotoFiles.map((file) =>
-        this.cloudinaryService.uploadToCloudinary(file.buffer, file.originalname),
+      const taggedPhotoUploadResults = await Promise.all(
+        taggedPhotoFiles.map((file) =>
+          this.cloudinaryService.uploadForHouse(houseId, file.buffer, file.originalname, 'photos'),
+        ),
       );
-      const taggedPhotoUrls = await Promise.all(taggedPhotoUploadPromises);
 
-      taggedPhotos = taggedPhotoUrls.map((url, index) => {
+      taggedPhotos = taggedPhotoUploadResults.map((upload, index) => {
         const gps = gpsMeta[index];
         const hasGps = gps?.lat != null && gps?.lng != null;
         return {
-          url,
+          url: upload.url,
+          publicId: upload.publicId,
           tag: tags[index] || 'other',
           description: descriptions[index] || undefined,
           lat: gps?.lat,
@@ -390,14 +414,21 @@ export class HousesController {
     }
 
     try {
-      return await this.housesService.create(user.sub, {
-        ...dto,
-        images: imageUrls,
-        proofOfAddress: proofOfAddressUrl,
-        ownershipDocuments: ownershipDocuments as CreateHouseDto['ownershipDocuments'],
-        taggedPhotos,
-      });
+      return await this.housesService.create(
+        user.sub,
+        {
+          ...dto,
+          images: imageUrls,
+          imagePublicIds,
+          proofOfAddress: proofOfAddressUrl,
+          proofOfAddressPublicId,
+          ownershipDocuments: ownershipDocuments as CreateHouseDto['ownershipDocuments'],
+          taggedPhotos,
+        },
+        pendingHouseId,
+      );
     } catch (error: any) {
+      await this.cloudinaryService.purgeHouseMedia(houseId);
       console.error('Error creating house:', error);
       // Re-throw with better error message
       if (error instanceof BadRequestException) {
@@ -662,6 +693,8 @@ export class HousesController {
     const allowedImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
     const maxSize = 5 * 1024 * 1024;
 
+    await this.cloudinaryService.deleteHousePhotos(id);
+
     const taggedPhotos = await Promise.all(
       taggedPhotoFiles.map(async (file, index) => {
         if (!allowedImageTypes.includes(file.mimetype)) {
@@ -678,12 +711,15 @@ export class HousesController {
             `Photo ${index + 1} must include GPS coordinates from Flowcheq Capture.`,
           );
         }
-        const url = await this.cloudinaryService.uploadToCloudinary(
+        const upload = await this.cloudinaryService.uploadForHouse(
+          id,
           file.buffer,
           file.originalname,
+          'photos',
         );
         return {
-          url,
+          url: upload.url,
+          publicId: upload.publicId,
           tag: (Array.isArray(tags) ? tags[index] : undefined) || 'other',
           description: Array.isArray(descriptions) ? descriptions[index] : undefined,
           lat: gps.lat,

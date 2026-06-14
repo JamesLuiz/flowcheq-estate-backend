@@ -24,6 +24,7 @@ import {
 } from './listing-validation.util';
 import { INSPECTION_FEE_NGN } from '../common/listing-requirements';
 import { resolveAgentGpsCoordinateUpdate } from '../common/geo.util';
+import { CloudinaryService } from './cloudinary.service';
 
 const LISTING_OWNER_ROLES: UserRole[] = [
   UserRole.Landlord,
@@ -43,6 +44,7 @@ export class HousesService {
     private readonly emailService: EmailService,
     @Inject(forwardRef(() => PropertyManagementService))
     private readonly propertyManagementService: PropertyManagementService,
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
 
   /**
@@ -56,7 +58,7 @@ export class HousesService {
     }
   }
 
-  async create(agentId: string, dto: CreateHouseDto) {
+  async create(agentId: string, dto: CreateHouseDto, houseId?: Types.ObjectId) {
     const agent = await this.usersService.findById(agentId);
 
     if (!agent || !LISTING_OWNER_ROLES.includes(agent.role as UserRole)) {
@@ -117,7 +119,10 @@ export class HousesService {
       houseData.bookedByUsers = undefined;
     }
 
-    const house = new this.houseModel(houseData);
+    const house = new this.houseModel({
+      ...houseData,
+      ...(houseId ? { _id: houseId } : {}),
+    });
 
     const savedHouse = await house.save();
     await savedHouse.populate('agentId');
@@ -509,9 +514,33 @@ export class HousesService {
 
   async remove(houseId: string, agentId: string): Promise<void> {
     await this.ensureAgentOwnsHouse(agentId, houseId);
+    await this.delistHouse(houseId);
+  }
+
+  private async delistHouse(houseId: string): Promise<void> {
+    this.validateObjectId(houseId, 'property ID');
+
+    const house = await this.houseModel.findById(new Types.ObjectId(houseId)).exec();
+    if (!house) {
+      throw new NotFoundException('House not found');
+    }
+    if (house.deleted) {
+      return;
+    }
+
+    await this.cloudinaryService.purgeHouseMedia(houseId, house.toObject());
+
     await this.houseModel
       .findByIdAndUpdate(new Types.ObjectId(houseId), {
-        $set: { deleted: true },
+        $set: {
+          deleted: true,
+          images: [],
+          imagePublicIds: [],
+          taggedPhotos: [],
+          ownershipDocuments: [],
+          proofOfAddress: undefined,
+          proofOfAddressPublicId: undefined,
+        },
       })
       .exec();
   }
@@ -980,18 +1009,19 @@ export class HousesService {
   }
 
   async delistAgentProperties(agentId: string) {
-    await this.houseModel.updateMany(
-      { agentId: new Types.ObjectId(agentId), deleted: { $ne: true } },
-      { deleted: true },
-    );
+    const houses = await this.houseModel
+      .find({
+        agentId: new Types.ObjectId(agentId),
+        deleted: { $ne: true },
+      })
+      .exec();
+
+    await Promise.all(houses.map((house) => this.delistHouse(house._id.toString())));
+
     return { success: true, message: 'All agent properties have been delisted' };
   }
 
   async delete(houseId: string): Promise<void> {
-    const house = await this.houseModel.findById(houseId);
-    if (!house) {
-      throw new NotFoundException('Property not found');
-    }
-    await this.houseModel.findByIdAndUpdate(houseId, { deleted: true }).exec();
+    await this.delistHouse(houseId);
   }
 }

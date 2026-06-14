@@ -8,6 +8,7 @@ import {
 
 export type TaggedPhotoInput = {
   url: string;
+  publicId?: string;
   tag: string;
   description?: string;
   lat?: number;

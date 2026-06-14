@@ -56,6 +56,12 @@ export class CreateHouseDto {
   @IsOptional()
   images?: string[];
 
+  @ApiProperty({ required: false, description: 'Cloudinary public_ids for images[]' })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  imagePublicIds?: string[];
+
   @ApiProperty({
     example: [
       { url: 'https://example.com/kitchen.jpg', tag: 'kitchen', description: 'Modern kitchen with island' },
@@ -68,6 +74,7 @@ export class CreateHouseDto {
   @IsOptional()
   taggedPhotos?: Array<{
     url: string;
+    publicId?: string;
     tag: string;
     description?: string;
   }>;
@@ -170,6 +177,11 @@ export class CreateHouseDto {
   @IsOptional()
   proofOfAddress?: string;
 
+  @ApiProperty({ required: false, description: 'Cloudinary public_id for proof of address' })
+  @IsString()
+  @IsOptional()
+  proofOfAddressPublicId?: string;
+
   @ApiProperty({
     required: false,
     description:
@@ -184,6 +196,7 @@ export class CreateHouseDto {
   ownershipDocuments?: Array<{
     type: 'c_of_o' | 'utility_bill' | 'deed' | 'governors_consent' | 'land_survey';
     url: string;
+    publicId?: string;
     uploadedAt?: Date;
   }>;
 
