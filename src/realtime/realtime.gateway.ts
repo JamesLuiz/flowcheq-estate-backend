@@ -13,6 +13,7 @@ import {
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
 import { RealtimeService } from './realtime.service';
+import { getCorsOrigins } from '../common/cors.util';
 
 /**
  * Unified Socket.IO gateway for the whole app.
@@ -25,7 +26,7 @@ import { RealtimeService } from './realtime.service';
  */
 @WebSocketGateway({
   cors: {
-    origin: ['https://house-me.vercel.app', 'http://localhost:8080', 'http://localhost:5173'],
+    origin: getCorsOrigins(),
     credentials: true,
   },
 })

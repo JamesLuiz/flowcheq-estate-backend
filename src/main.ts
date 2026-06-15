@@ -2,14 +2,17 @@ import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { getCorsOrigins } from './common/cors.util';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
-  // Enhanced CORS configuration
+  const corsOrigins = getCorsOrigins();
+  logger.log(`CORS origins: ${corsOrigins.join(', ')}`);
+
   app.enableCors({
-    origin: ['https://house-me.vercel.app', 'http://localhost:8080'],
+    origin: corsOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',
