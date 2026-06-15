@@ -27,9 +27,6 @@ export function getSmtpTransportOptions(
     connectionTimeout: 30000,
     greetingTimeout: 30000,
     socketTimeout: 30000,
-    pool: true,
-    maxConnections: 1,
-    maxMessages: 3,
     tls: {
       rejectUnauthorized: configService.get<string>('SMTP_TLS_REJECT_UNAUTHORIZED') !== 'false',
     },
