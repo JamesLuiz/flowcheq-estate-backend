@@ -2,7 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { getCorsOrigins } from './common/cors.util';
+import { getCorsOrigins, corsOriginCallback } from './common/cors.util';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -12,7 +12,7 @@ async function bootstrap() {
   logger.log(`CORS origins: ${corsOrigins.join(', ')}`);
 
   app.enableCors({
-    origin: corsOrigins,
+    origin: corsOriginCallback,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',

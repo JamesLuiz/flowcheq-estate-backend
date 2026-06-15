@@ -13,7 +13,7 @@ import {
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
 import { RealtimeService } from './realtime.service';
-import { getCorsOrigins } from '../common/cors.util';
+import { getCorsOrigins, isAllowedCorsOrigin } from '../common/cors.util';
 
 /**
  * Unified Socket.IO gateway for the whole app.
@@ -26,7 +26,13 @@ import { getCorsOrigins } from '../common/cors.util';
  */
 @WebSocketGateway({
   cors: {
-    origin: getCorsOrigins(),
+    origin: (origin, callback) => {
+      if (isAllowedCorsOrigin(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`Socket.IO CORS blocked: ${origin ?? '(none)'}`));
+      }
+    },
     credentials: true,
   },
 })
