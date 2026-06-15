@@ -16,6 +16,12 @@ import { UserRole } from '../users/schemas/user.schema';
 export class LegalReviewController {
   constructor(private readonly service: LegalReviewService) {}
 
+  @Get('stats')
+  @ApiOperation({ summary: 'Legal review counts for lawyer dashboard' })
+  getStats() {
+    return this.service.getStats();
+  }
+
   @Get('pending')
   @ApiOperation({ summary: 'Listings awaiting lawyer document review' })
   listPending() {

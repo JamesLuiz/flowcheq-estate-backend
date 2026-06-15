@@ -18,6 +18,28 @@ export class LegalReviewService {
     private readonly emailService: EmailService,
   ) {}
 
+  async getStats() {
+    const base = { deleted: { $ne: true } };
+    const pending = await this.houseModel.countDocuments({
+      ...base,
+      $or: [
+        { 'lawyerReview.status': 'pending' },
+        { lawyerReview: { $exists: false }, verificationStatus: 'pending_verification' },
+      ],
+      ownershipDocuments: { $exists: true, $not: { $size: 0 } },
+    });
+    const approved = await this.houseModel.countDocuments({
+      ...base,
+      'lawyerReview.status': 'approved',
+    });
+    const rejected = await this.houseModel.countDocuments({
+      ...base,
+      'lawyerReview.status': 'rejected',
+    });
+
+    return { pending, approved, rejected, total: pending + approved + rejected };
+  }
+
   async listPending() {
     const houses = await this.houseModel
       .find({

@@ -337,6 +337,26 @@ export class UsersService {
     return query.exec();
   }
 
+  async findLawFirms(
+    filter: FilterQuery<UserDocument> = {},
+    options: { limit?: number } = {},
+  ): Promise<UserDocument[]> {
+    let query = this.userModel
+      .find({ role: UserRole.Lawyer, ...filter })
+      .sort({ createdAt: -1 });
+
+    if (options.limit) {
+      query = query.limit(options.limit);
+    }
+
+    return query.exec();
+  }
+
+  async countByRole(role: UserRole | UserRole[]): Promise<number> {
+    const roleFilter = Array.isArray(role) ? { $in: role } : role;
+    return this.userModel.countDocuments({ role: roleFilter }).exec();
+  }
+
   async setResetToken(email: string, resetToken: string, resetTokenExpiry: Date) {
     await this.userModel
       .updateOne(

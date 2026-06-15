@@ -17,6 +17,7 @@ import { RegisterTenantDto } from './dto/register-tenant.dto';
 import { RegisterLandlordDto } from './dto/register-landlord.dto';
 import { RegisterAgentDto } from './dto/register-agent.dto';
 import { RegisterFieldVerifierDto } from './dto/register-field-verifier.dto';
+import { RegisterLawFirmDto } from './dto/register-law-firm.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -218,6 +219,50 @@ export class AuthService {
     };
   }
 
+  async registerLawFirm(dto: RegisterLawFirmDto, certificateDocument: Express.Multer.File) {
+    const uploadResult = await this.cloudinaryService.uploadToCloudinaryWithPublicId(
+      certificateDocument.buffer,
+      certificateDocument.originalname,
+      'flowcheq-estate/law-firms',
+    );
+
+    const payload: CreateUserDto = {
+      name: dto.name,
+      email: dto.email,
+      password: await this.hashPassword(dto.password),
+      phone: dto.phone,
+      bio: dto.bio,
+      role: UserRole.Lawyer,
+    };
+
+    const user = await this.usersService.create(payload);
+
+    await this.usersService.updateAgentProfile(user._id.toString(), {
+      lawFirmDetails: {
+        ...dto.lawFirmDetails,
+        practicingCertificateUrl: uploadResult.url,
+      },
+      lawFirmVerificationStatus: 'pending',
+      verified: false,
+      verificationStatus: 'pending',
+    } as any);
+
+    try {
+      await this.emailService.sendEmail({
+        to: process.env.ADMIN_EMAIL || 'ops@estate.flowcheq.com',
+        subject: 'New Law Firm Partner Registration',
+        text: `A law firm partner registered and requires approval.\n\nFirm: ${dto.lawFirmDetails.firmName}\nBar ID: ${dto.lawFirmDetails.barRegistrationNumber}\nContact: ${dto.name} <${dto.email}>`,
+      });
+    } catch (error) {
+      this.logger.error(`Failed to send law firm admin notification: ${String(error)}`);
+    }
+
+    return {
+      message:
+        'Law firm registration submitted. Your partner account is pending admin approval before dashboard access.',
+    };
+  }
+
   async login(dto: LoginDto) {
     const user = await this.usersService.findByEmail(dto.email);
 
@@ -251,6 +296,16 @@ export class AuthService {
 
     if (!passwordValid) {
       throw new UnauthorizedException('Invalid email or password');
+    }
+
+    if (
+      user.role === UserRole.Lawyer &&
+      user.lawFirmVerificationStatus &&
+      user.lawFirmVerificationStatus !== 'approved'
+    ) {
+      throw new UnauthorizedException(
+        'Law firm account is pending admin approval. You will receive access once verified.',
+      );
     }
 
     await this.usersService.updateLastLoginAt(user._id.toString());

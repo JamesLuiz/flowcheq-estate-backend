@@ -23,6 +23,8 @@ import { HousesService } from '../houses/houses.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Settings, SettingsDocument } from './schemas/settings.schema';
+import { House, HouseDocument } from '../houses/schemas/house.schema';
+import { UserRole } from '../users/schemas/user.schema';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard)
@@ -37,6 +39,7 @@ export class AdminController {
     private readonly configService: ConfigService,
     private readonly housesService: HousesService,
     @InjectModel(Settings.name) private readonly settingsModel: Model<SettingsDocument>,
+    @InjectModel(House.name) private readonly houseModel: Model<HouseDocument>,
   ) {}
 
   private ensureAdmin(user: RequestUser) {
@@ -121,6 +124,88 @@ export class AdminController {
     }
 
     return this.usersService.updateAgentProfile(agentId, updatePayload);
+  }
+
+  // ============ LAW FIRM PARTNERS ============
+
+  @Get('law-firms')
+  @ApiOperation({ summary: 'List law firm partner registrations (admin)' })
+  @ApiQuery({ name: 'status', required: false, enum: ['pending', 'approved', 'rejected'] })
+  async getLawFirms(
+    @CurrentUser() user: RequestUser,
+    @Query('status') status?: 'pending' | 'approved' | 'rejected',
+  ) {
+    this.ensureAdmin(user);
+
+    const filter: Record<string, unknown> = {};
+    if (status) {
+      filter.lawFirmVerificationStatus = status;
+    }
+
+    const firms = await this.usersService.findLawFirms(filter);
+    return {
+      data: firms.map((firm) => this.usersService.toSafeUser(firm)),
+    };
+  }
+
+  @Patch('law-firms/:firmId')
+  @ApiOperation({ summary: 'Approve or reject a law firm partner (admin only)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['approved', 'rejected'] },
+        rejectionReason: { type: 'string' },
+      },
+      required: ['status'],
+    },
+  })
+  async updateLawFirmStatus(
+    @CurrentUser() user: RequestUser,
+    @Param('firmId') firmId: string,
+    @Body('status') status: 'approved' | 'rejected',
+    @Body('rejectionReason') rejectionReason?: string,
+  ) {
+    this.ensureAdmin(user);
+
+    const firm = await this.usersService.findById(firmId);
+    if (!firm || firm.role !== UserRole.Lawyer) {
+      throw new ForbiddenException('Law firm partner not found');
+    }
+
+    const updatePayload: Record<string, unknown> = {
+      lawFirmVerificationStatus: status,
+    };
+
+    if (status === 'approved') {
+      updatePayload.verified = true;
+      updatePayload.verificationStatus = 'approved';
+      updatePayload.lawFirmRejectionReason = undefined;
+    } else {
+      updatePayload.verified = false;
+      updatePayload.verificationStatus = 'rejected';
+      updatePayload.lawFirmRejectionReason = rejectionReason?.trim() || 'Application rejected';
+    }
+
+    const updated = await this.usersService.updateAgentProfile(firmId, updatePayload as any);
+
+    try {
+      await this.emailService.sendEmail({
+        to: firm.email,
+        subject:
+          status === 'approved'
+            ? 'Law firm partner approved — Flowcheq Estate'
+            : 'Law firm partner application update — Flowcheq Estate',
+        text:
+          status === 'approved'
+            ? `Hello ${firm.name},\n\nYour law firm partner account has been approved. You can now sign in and access the legal review panel.`
+            : `Hello ${firm.name},\n\nYour law firm partner application was not approved.\nReason: ${updatePayload.lawFirmRejectionReason}`,
+      });
+    } catch {
+      // non-blocking
+    }
+
+    return updated;
   }
 
   // ============ PROMOTIONS ============
@@ -386,9 +471,50 @@ export class AdminController {
 
     const totalPlatformRevenue = totalPromotionRevenue + totalViewingPlatformRevenue;
 
+    const totalLandlords = await this.usersService.countByRole(UserRole.Landlord);
+    const totalLawFirms = await this.usersService.countByRole(UserRole.Lawyer);
+    const approvedLawFirms = (
+      await this.usersService.findLawFirms({ lawFirmVerificationStatus: 'approved' })
+    ).length;
+    const pendingLawFirms = (
+      await this.usersService.findLawFirms({ lawFirmVerificationStatus: 'pending' })
+    ).length;
+
+    const houseBase = { deleted: { $ne: true } };
+    const pendingLegalReviews = await this.houseModel.countDocuments({
+      ...houseBase,
+      $or: [
+        { 'lawyerReview.status': 'pending' },
+        { lawyerReview: { $exists: false }, verificationStatus: 'pending_verification' },
+      ],
+      ownershipDocuments: { $exists: true, $not: { $size: 0 } },
+    });
+    const approvedLegalReviews = await this.houseModel.countDocuments({
+      ...houseBase,
+      'lawyerReview.status': 'approved',
+    });
+    const rejectedLegalReviews = await this.houseModel.countDocuments({
+      ...houseBase,
+      'lawyerReview.status': 'rejected',
+    });
+    const totalProperties = await this.houseModel.countDocuments(houseBase);
+    const activeProperties = await this.houseModel.countDocuments({
+      ...houseBase,
+      status: 'active',
+    });
+
     return {
       totalAgents,
       verifiedAgents,
+      totalLandlords,
+      totalLawFirms,
+      approvedLawFirms,
+      pendingLawFirms,
+      pendingLegalReviews,
+      approvedLegalReviews,
+      rejectedLegalReviews,
+      totalProperties,
+      activeProperties,
       totalPromotionRevenue,
       totalViewingPlatformRevenue,
       totalPlatformRevenue,

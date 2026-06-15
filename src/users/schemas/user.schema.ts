@@ -153,6 +153,28 @@ export class User {
   @Prop()
   companyRejectionReason?: string;
 
+  /** Partner law firm profile (lawyer role accounts) */
+  @Prop({ type: Object })
+  lawFirmDetails?: {
+    firmName: string;
+    barRegistrationNumber: string;
+    practicingCertificateUrl?: string;
+    businessEmail: string;
+    businessPhone: string;
+    address: string;
+    city: string;
+    state: string;
+    website?: string;
+  };
+
+  @Prop({
+    enum: ['pending', 'approved', 'rejected'],
+  })
+  lawFirmVerificationStatus?: 'pending' | 'approved' | 'rejected';
+
+  @Prop()
+  lawFirmRejectionReason?: string;
+
   @Prop()
   bvn?: string;
 

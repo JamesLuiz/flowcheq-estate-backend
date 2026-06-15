@@ -14,11 +14,12 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
+import { RegisterAgentDto } from './dto/register-agent.dto';
 import { RegisterCompanyDto } from './dto/register-company.dto';
 import { RegisterTenantDto } from './dto/register-tenant.dto';
 import { RegisterLandlordDto } from './dto/register-landlord.dto';
 import { RegisterFieldVerifierDto } from './dto/register-field-verifier.dto';
-import { RegisterAgentDto } from './dto/register-agent.dto';
+import { RegisterLawFirmDto } from './dto/register-law-firm.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -135,6 +136,32 @@ export class AuthController {
     }
     
     return this.authService.registerCompany(dto, cacDocument);
+  }
+
+  @Post('register-law-firm')
+  @UseInterceptors(FileInterceptor('practicingCertificate'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Register a partner law firm for listing legal review' })
+  @ApiResponse({ status: 201, description: 'Law firm registration submitted for admin approval' })
+  async registerLawFirm(
+    @Body('data') dataString: string,
+    @UploadedFile() practicingCertificate: Express.Multer.File,
+  ) {
+    if (!dataString) {
+      throw new BadRequestException('Registration data is required');
+    }
+    if (!practicingCertificate) {
+      throw new BadRequestException('Practicing certificate document is required');
+    }
+
+    let dto: RegisterLawFirmDto;
+    try {
+      dto = JSON.parse(dataString);
+    } catch {
+      throw new BadRequestException('Invalid registration data format');
+    }
+
+    return this.authService.registerLawFirm(dto, practicingCertificate);
   }
 
   @Post('login')
