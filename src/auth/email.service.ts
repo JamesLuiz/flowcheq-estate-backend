@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
+import { createSmtpTransporter } from '../common/smtp.config';
 
 @Injectable()
 export class EmailService {
@@ -13,37 +14,13 @@ export class EmailService {
       this.configService.get<string>('CLIENT_ORIGIN') ||
       'http://localhost:5173';
 
-    // Initialize nodemailer transporter
-    const smtpHost = this.configService.get<string>('SMTP_HOST') || 'smtp.gmail.com';
-    const smtpPort = parseInt(this.configService.get<string>('SMTP_PORT') || '587', 10);
-    const smtpUser = this.configService.get<string>('SMTP_USER');
-    const smtpPass = this.configService.get<string>('SMTP_PASS');
-    const smtpSecure = this.configService.get<string>('SMTP_SECURE') === 'true';
+    // Stalwart SMTP (default: port 465 + SSL/TLS) — see SMTP_* in .env.example
+    const transporter = createSmtpTransporter(this.configService);
 
-    if (smtpUser && smtpPass) {
-      this.transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpSecure, // true for 465, false for other ports
-        auth: {
-          user: smtpUser,
-          pass: smtpPass,
-        },
-        connectionTimeout: 30000, // 30 seconds timeout (increased from 10s)
-        greetingTimeout: 30000,
-        socketTimeout: 30000,
-        // Retry configuration
-        pool: true, // Use connection pooling
-        maxConnections: 1,
-        maxMessages: 3,
-        // Allow self-signed certificates for development
-        tls: {
-          rejectUnauthorized: false,
-        },
-        // Additional options for better connection handling
-        requireTLS: !smtpSecure, // Require TLS for non-secure ports
-        debug: false, // Set to true for verbose logging
-      });
+    if (transporter) {
+      this.transporter = transporter;
+      const smtpHost = this.configService.get<string>('SMTP_HOST') || 'mail.flowcheq.com';
+      const smtpPort = this.configService.get<string>('SMTP_PORT') || '465';
 
       // Verify transporter configuration (async, don't block)
       this.transporter.verify().then(() => {

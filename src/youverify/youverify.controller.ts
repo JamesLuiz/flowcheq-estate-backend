@@ -1,12 +1,15 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Headers,
   Post,
+  Req,
   UseGuards,
-  BadRequestException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { RawBodyRequest } from '@nestjs/common';
+import type { Request } from 'express';
 import { YouverifyService } from './youverify.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser, type RequestUser } from '../auth/decorators/current-user.decorator';
@@ -32,7 +35,9 @@ export class YouverifyController {
 
     const allowedRoles = ['landlord', 'agent', 'company', 'real_estate_company'];
     if (!allowedRoles.includes(profile.role)) {
-      throw new BadRequestException('Youverify account verification is for landlords, agents, and companies only');
+      throw new BadRequestException(
+        'Youverify account verification is for landlords, agents, and companies only',
+      );
     }
 
     if (profile.youverifyStatus === 'verified') {
@@ -67,17 +72,29 @@ export class YouverifyController {
   }
 
   @Post('webhook')
-  @ApiOperation({ summary: 'Youverify webhook callback' })
+  @ApiOperation({ summary: 'Youverify webhook callback (HMAC x-youverify-signature)' })
   async webhook(
+    @Req() req: RawBodyRequest<Request>,
     @Body() body: Record<string, unknown>,
     @Headers('x-youverify-signature') signature?: string,
   ) {
-    const payload = JSON.stringify(body);
-    if (!this.youverifyService.verifyWebhookSignature(payload, signature)) {
+    const rawBody =
+      req.rawBody?.length != null && req.rawBody.length > 0
+        ? req.rawBody.toString('utf8')
+        : JSON.stringify(body ?? {});
+
+    if (!this.youverifyService.verifyWebhookSignature(rawBody, signature)) {
       throw new BadRequestException('Invalid webhook signature');
     }
 
-    const parsed = this.youverifyService.parseWebhookStatus(body);
+    let parsedBody: Record<string, unknown>;
+    try {
+      parsedBody = JSON.parse(rawBody) as Record<string, unknown>;
+    } catch {
+      throw new BadRequestException('Invalid webhook JSON');
+    }
+
+    const parsed = this.youverifyService.parseWebhookStatus(parsedBody);
     if (!parsed.reference) {
       return { received: true, skipped: true };
     }
@@ -88,12 +105,12 @@ export class YouverifyController {
     if (parsed.status === 'verified') {
       await this.usersService.markYouverifyVerified(userId, {
         youverifyCustomerId: parsed.customerId,
-        youverifyPayload: body,
+        youverifyPayload: parsedBody,
       });
     } else if (parsed.status === 'failed') {
       await this.usersService.updateYouverifySession(userId, {
         youverifyStatus: 'failed',
-        youverifyPayload: body,
+        youverifyPayload: parsedBody,
       });
     }
 

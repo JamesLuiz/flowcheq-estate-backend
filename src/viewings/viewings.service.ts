@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { CloudinaryService } from '../houses/cloudinary.service';
 import { FlutterwaveService } from '../promotions/flutterwave.service';
 import { EmailService } from '../auth/email.service';
+import { createSmtpTransporter } from '../common/smtp.config';
 
 @Injectable()
 export class ViewingsService {
@@ -88,18 +89,16 @@ export class ViewingsService {
     return this.toResponse(saved);
   }
 
-  private async sendNotifications(viewing: ViewingDocument, house: any, agent: any, dto: any) {
-    const nodemailer = await import('nodemailer');
+  private getSmtpTransporter() {
+    const transporter = createSmtpTransporter(this.configService);
+    if (!transporter) {
+      throw new Error('SMTP not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS.');
+    }
+    return transporter;
+  }
 
-    const transporter = nodemailer.createTransport({
-      host: this.configService.get('SMTP_HOST') || 'smtp.gmail.com',
-      port: parseInt(this.configService.get('SMTP_PORT') || '587'),
-      secure: false,
-      auth: {
-        user: this.configService.get('SMTP_USER'),
-        pass: this.configService.get('SMTP_PASS'),
-      },
-    });
+  private async sendNotifications(viewing: ViewingDocument, house: any, agent: any, dto: any) {
+    const transporter = this.getSmtpTransporter();
 
     const clientName = dto.name || 'A client';
     const clientEmail = dto.email || 'Not provided';
@@ -301,17 +300,7 @@ export class ViewingsService {
   }
 
   private async sendRescheduleEmail(viewing: ViewingDocument, newDate: string, newTime: string) {
-    const nodemailer = await import('nodemailer');
-
-    const transporter = nodemailer.createTransport({
-      host: this.configService.get('SMTP_HOST') || 'smtp.gmail.com',
-      port: parseInt(this.configService.get('SMTP_PORT') || '587'),
-      secure: false,
-      auth: {
-        user: this.configService.get('SMTP_USER'),
-        pass: this.configService.get('SMTP_PASS'),
-      },
-    });
+    const transporter = this.getSmtpTransporter();
 
     const house = viewing.houseId as any;
     const clientEmail = (viewing.userId as any)?.email || viewing.guestEmail;
@@ -346,17 +335,7 @@ export class ViewingsService {
   }
 
   private async sendStatusUpdateEmail(viewing: ViewingDocument, status: string) {
-    const nodemailer = await import('nodemailer');
-
-    const transporter = nodemailer.createTransport({
-      host: this.configService.get('SMTP_HOST') || 'smtp.gmail.com',
-      port: parseInt(this.configService.get('SMTP_PORT') || '587'),
-      secure: false,
-      auth: {
-        user: this.configService.get('SMTP_USER'),
-        pass: this.configService.get('SMTP_PASS'),
-      },
-    });
+    const transporter = this.getSmtpTransporter();
 
     const house = viewing.houseId as any;
     const clientEmail = (viewing.userId as any)?.email || viewing.guestEmail;

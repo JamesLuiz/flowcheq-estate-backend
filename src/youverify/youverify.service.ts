@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import { createHmac, timingSafeEqual } from 'crypto';
 
 export type YouverifyInitiateResult = {
   reference: string;
@@ -58,7 +59,7 @@ export class YouverifyService {
           firstName: input.firstName,
           lastName: input.lastName,
           phone: input.phone,
-          metadata: { userId: input.userId, role: input.role, product: 'house-me-account-kyc' },
+          metadata: { userId: input.userId, role: input.role, product: 'flowcheq-estate-account-kyc' },
         },
         {
           headers: {
@@ -86,13 +87,56 @@ export class YouverifyService {
     }
   }
 
-  /** Verify webhook signature when YOVERIFY_WEBHOOK_SECRET is configured */
-  verifyWebhookSignature(payload: string, signature?: string): boolean {
+  /**
+   * Verify x-youverify-signature (HMAC-SHA256 of raw JSON body).
+   * @see https://doc.youverify.co/webhooks
+   */
+  verifyWebhookSignature(rawPayload: string, signature?: string): boolean {
     const secret = this.configService.get<string>('YOVERIFY_WEBHOOK_SECRET');
-    if (!secret) return true;
-    if (!signature) return false;
-    // Youverify-specific HMAC validation can be added when webhook docs are wired
-    return signature.length > 0;
+    if (!secret) {
+      this.logger.warn(
+        'YOVERIFY_WEBHOOK_SECRET not set — webhooks are accepted without signature verification',
+      );
+      return true;
+    }
+    if (!signature?.trim()) {
+      return false;
+    }
+
+    const expectedHex = createHmac('sha256', secret).update(rawPayload, 'utf8').digest('hex');
+    const received = signature.trim().replace(/^sha256=/i, '').toLowerCase();
+
+    if (this.safeEqualHex(received, expectedHex)) {
+      return true;
+    }
+
+    const expectedBase64 = createHmac('sha256', secret)
+      .update(rawPayload, 'utf8')
+      .digest('base64');
+    const receivedBase64 = signature.trim().replace(/^sha256=/i, '');
+    if (this.safeEqualString(receivedBase64, expectedBase64)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private safeEqualHex(a: string, b: string): boolean {
+    if (a.length !== b.length) return false;
+    try {
+      return timingSafeEqual(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
+    } catch {
+      return false;
+    }
+  }
+
+  private safeEqualString(a: string, b: string): boolean {
+    if (a.length !== b.length) return false;
+    try {
+      return timingSafeEqual(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
+    } catch {
+      return false;
+    }
   }
 
   parseWebhookStatus(body: Record<string, unknown>): {
