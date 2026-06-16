@@ -104,7 +104,10 @@ export class YouverifyController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Start Flutterwave checkout for verification fee (before SDK)' })
-  async payVerificationFee(@CurrentUser() user: RequestUser) {
+  async payVerificationFee(
+    @CurrentUser() user: RequestUser,
+    @Body() body?: { client?: 'web' | 'mobile' },
+  ) {
     const profile = await this.usersService.findById(user.sub);
     if (!profile) throw new BadRequestException('User not found');
 
@@ -147,6 +150,7 @@ export class YouverifyController {
       meta: {
         userId: user.sub,
         type: 'verification_fee',
+        client: body?.client === 'mobile' ? 'mobile' : 'web',
       },
       customizations: {
         title: 'Flowcheq Estate — Identity Verification',
@@ -170,30 +174,42 @@ export class YouverifyController {
     @Query('status') status?: string,
     @Res() res?: Response,
   ) {
-    const frontendUrl =
-      this.configService.get<string>('FRONTEND_URL')?.replace(/\/$/, '') ||
-      'http://localhost:5173';
+    const redirectAfterFee = (fee: 'success' | 'failed', client?: string) => {
+      if (client === 'mobile') {
+        const mobileUrl =
+          this.configService.get<string>('MOBILE_APP_URL')?.replace(/\/$/, '') ||
+          'flowcheq://verify-account';
+        return `${mobileUrl}?fee=${fee}`;
+      }
+      const frontendUrl =
+        this.configService.get<string>('FRONTEND_URL')?.replace(/\/$/, '') ||
+        'http://localhost:5173';
+      return `${frontendUrl}/verify-account?fee=${fee}`;
+    };
 
     try {
       if (!txRef || status !== 'successful') {
-        return res?.redirect(`${frontendUrl}/verify-account?fee=failed`);
+        return res?.redirect(redirectAfterFee('failed'));
       }
 
       const verification = await this.flutterwaveService.verifyPaymentByReference(txRef);
       if (!verification.success) {
-        return res?.redirect(`${frontendUrl}/verify-account?fee=failed`);
+        return res?.redirect(
+          redirectAfterFee('failed', verification.data?.meta?.client as string | undefined),
+        );
       }
 
       const userId = verification.data?.meta?.userId as string | undefined;
       const amount = Number(verification.data?.amount ?? 0);
+      const client = verification.data?.meta?.client as string | undefined;
       if (!userId) {
-        return res?.redirect(`${frontendUrl}/verify-account?fee=failed`);
+        return res?.redirect(redirectAfterFee('failed', client));
       }
 
       await this.verificationPaymentsService.markFeePaidFromCheckout(userId, txRef, amount);
-      return res?.redirect(`${frontendUrl}/verify-account?fee=success`);
+      return res?.redirect(redirectAfterFee('success', client));
     } catch {
-      return res?.redirect(`${frontendUrl}/verify-account?fee=failed`);
+      return res?.redirect(redirectAfterFee('failed'));
     }
   }
 
