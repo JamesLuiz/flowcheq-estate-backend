@@ -2,173 +2,254 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Headers,
   Post,
+  Query,
   Req,
-  UploadedFile,
+  Res,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { RawBodyRequest } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { YouverifyService } from './youverify.service';
+import { VerificationPaymentsService } from './verification-payments.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser, type RequestUser } from '../auth/decorators/current-user.decorator';
 import { UsersService } from '../users/users.service';
-import { CloudinaryService } from '../houses/cloudinary.service';
-
-const ACCOUNT_VERIFICATION_ROLES = new Set([
-  'landlord',
-  'agent',
-  'company',
-  'real_estate_company',
-  'user',
-  'tenant',
-  'house_hunter',
-  'lawyer',
-]);
+import { FlutterwaveService } from '../promotions/flutterwave.service';
+import { requiresAccountVerification } from '../common/account-verification.constants';
+import { ConfigService } from '@nestjs/config';
 
 @ApiTags('Youverify')
 @Controller('youverify')
 export class YouverifyController {
   constructor(
     private readonly youverifyService: YouverifyService,
+    private readonly verificationPaymentsService: VerificationPaymentsService,
     private readonly usersService: UsersService,
-    private readonly cloudinaryService: CloudinaryService,
+    private readonly flutterwaveService: FlutterwaveService,
+    private readonly configService: ConfigService,
   ) {}
 
-  @Post('account/verify')
+  @Get('account/status')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
-  @UseInterceptors(FileInterceptor('selfie'))
-  @ApiConsumes('multipart/form-data')
-  @ApiOperation({
-    summary: 'Verify account identity via YouVerify (NIN or driver license + selfie)',
-  })
-  async verifyAccount(
+  @ApiOperation({ summary: 'Verification fee status, wallet, and SDK readiness' })
+  async getAccountStatus(@CurrentUser() user: RequestUser) {
+    const profile = await this.usersService.findById(user.sub);
+    if (!profile) throw new BadRequestException('User not found');
+
+    if (!requiresAccountVerification(profile.role)) {
+      return { required: false, youverifyStatus: profile.youverifyStatus ?? 'not_required' };
+    }
+
+    const verificationFee = this.verificationPaymentsService.getVerificationFee();
+    const payment = await this.verificationPaymentsService.getOrCreatePayment(user.sub);
+    const feePaid = this.verificationPaymentsService.isVerificationFeePaid(payment);
+
+    let walletBalance = 0;
+    let virtualAccount: Record<string, string | undefined> | null = null;
+
+    try {
+      const wallet = await this.flutterwaveService.getWalletByUserId(user.sub);
+      if (wallet) {
+        virtualAccount = {
+          accountNumber: wallet.accountNumber,
+          accountName: wallet.accountName,
+          bankName: wallet.bankName,
+          bankCode: wallet.bankCode,
+          status: wallet.status,
+        };
+        try {
+          const balanceData = await this.flutterwaveService.getAvailableBalance(user.sub);
+          walletBalance =
+            balanceData.data?.available_balance || balanceData.data?.ledger_balance || 0;
+          await this.usersService.updateWalletBalance(user.sub, walletBalance);
+        } catch {
+          walletBalance = (profile as { walletBalance?: number }).walletBalance ?? 0;
+        }
+      }
+    } catch {
+      walletBalance = (profile as { walletBalance?: number }).walletBalance ?? 0;
+    }
+
+    const sdkReady = feePaid && profile.youverifyStatus !== 'verified';
+
+    return {
+      required: true,
+      youverifyStatus: profile.youverifyStatus ?? 'not_started',
+      verificationFee,
+      feePaid,
+      paymentStatus: payment.status,
+      paymentEvents: payment.events,
+      checkoutReference: payment.flutterwaveReference,
+      walletBalance,
+      virtualAccount,
+      sdkReady,
+      sdkConfig: sdkReady
+        ? {
+            vFormId: this.configService.get<string>('YOVERIFY_VFORM_ID'),
+            publicMerchantKey: this.configService.get<string>('YOVERIFY_PUBLIC_MERCHANT_KEY'),
+            sandboxEnvironment:
+              this.configService.get<string>('YOVERIFY_SANDBOX') === 'true',
+            metadata: { userId: user.sub, product: 'flowcheq-estate' },
+          }
+        : null,
+    };
+  }
+
+  @Post('account/pay-fee')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Start Flutterwave checkout for verification fee (before SDK)' })
+  async payVerificationFee(@CurrentUser() user: RequestUser) {
+    const profile = await this.usersService.findById(user.sub);
+    if (!profile) throw new BadRequestException('User not found');
+
+    if (!requiresAccountVerification(profile.role)) {
+      throw new BadRequestException('Verification not required for this role');
+    }
+
+    if (profile.youverifyStatus === 'verified') {
+      return { alreadyVerified: true, message: 'Already verified' };
+    }
+
+    const payment = await this.verificationPaymentsService.findLatestForUser(user.sub);
+    if (this.verificationPaymentsService.isVerificationFeePaid(payment)) {
+      return {
+        success: true,
+        alreadyPaid: true,
+        message: 'Verification fee already paid. Continue with identity verification.',
+      };
+    }
+
+    const fee = this.verificationPaymentsService.getVerificationFee();
+    const { txRef } = await this.verificationPaymentsService.prepareCheckout(user.sub);
+
+    const apiBase =
+      this.configService.get<string>('API_BASE_URL')?.replace(/\/$/, '') ||
+      'http://localhost:3000';
+    const frontendUrl =
+      this.configService.get<string>('FRONTEND_URL')?.replace(/\/$/, '') ||
+      'http://localhost:5173';
+
+    const callbackUrl = `${apiBase}/youverify/account/fee-callback?tx_ref=${encodeURIComponent(txRef)}`;
+
+    const paymentResult = await this.flutterwaveService.initializePayment({
+      amount: fee,
+      email: profile.email,
+      name: profile.name,
+      phone: profile.phone,
+      tx_ref: txRef,
+      callback_url: callbackUrl,
+      meta: {
+        userId: user.sub,
+        type: 'verification_fee',
+      },
+      customizations: {
+        title: 'Flowcheq Estate — Identity Verification',
+        description: `Verification fee ₦${fee.toLocaleString()} (YouVerify KYC)`,
+        logo: 'https://house-me.vercel.app/logo.png',
+      },
+    });
+
+    return {
+      success: true,
+      paymentLink: paymentResult.paymentLink,
+      txRef,
+      amount: fee,
+    };
+  }
+
+  @Get('account/fee-callback')
+  @ApiOperation({ summary: 'Flutterwave redirect after verification fee checkout' })
+  async verificationFeeCallback(
+    @Query('tx_ref') txRef: string,
+    @Query('status') status?: string,
+    @Res() res?: Response,
+  ) {
+    const frontendUrl =
+      this.configService.get<string>('FRONTEND_URL')?.replace(/\/$/, '') ||
+      'http://localhost:5173';
+
+    try {
+      if (!txRef || status !== 'successful') {
+        return res?.redirect(`${frontendUrl}/verify-account?fee=failed`);
+      }
+
+      const verification = await this.flutterwaveService.verifyPaymentByReference(txRef);
+      if (!verification.success) {
+        return res?.redirect(`${frontendUrl}/verify-account?fee=failed`);
+      }
+
+      const userId = verification.data?.meta?.userId as string | undefined;
+      const amount = Number(verification.data?.amount ?? 0);
+      if (!userId) {
+        return res?.redirect(`${frontendUrl}/verify-account?fee=failed`);
+      }
+
+      await this.verificationPaymentsService.markFeePaidFromCheckout(userId, txRef, amount);
+      return res?.redirect(`${frontendUrl}/verify-account?fee=success`);
+    } catch {
+      return res?.redirect(`${frontendUrl}/verify-account?fee=failed`);
+    }
+  }
+
+  @Post('account/sdk-complete')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Mark user verified after YouVerify Web SDK vForm success' })
+  async sdkComplete(
     @CurrentUser() user: RequestUser,
-    @UploadedFile() selfie: Express.Multer.File,
-    @Body('documentType') documentType: string,
-    @Body('idNumber') idNumber: string,
-    @Body('firstName') firstName: string,
-    @Body('lastName') lastName: string,
-    @Body('dateOfBirth') dateOfBirth?: string,
-    @Body('isSubjectConsent') isSubjectConsent?: string,
+    @Body() body: Record<string, unknown>,
   ) {
     const profile = await this.usersService.findById(user.sub);
     if (!profile) throw new BadRequestException('User not found');
 
-    if (!ACCOUNT_VERIFICATION_ROLES.has(profile.role)) {
-      throw new BadRequestException('Account verification is not available for this role');
+    if (!requiresAccountVerification(profile.role)) {
+      throw new BadRequestException('Verification not required for this role');
     }
 
     if (profile.youverifyStatus === 'verified') {
-      return { alreadyVerified: true, message: 'Account already verified with YouVerify' };
+      return { success: true, alreadyVerified: true };
     }
 
-    const consent = isSubjectConsent === 'true' || isSubjectConsent === '1';
-    if (!consent) {
-      throw new BadRequestException('Subject consent is required for identity verification');
+    const payment = await this.verificationPaymentsService.findLatestForUser(user.sub);
+    if (!this.verificationPaymentsService.isVerificationFeePaid(payment)) {
+      throw new BadRequestException('Pay the verification fee before completing identity check');
     }
 
-    if (!documentType || !['nin', 'driver_license'].includes(documentType)) {
-      throw new BadRequestException('documentType must be nin or driver_license');
-    }
+    const reference =
+      (body.reference as string | undefined) ||
+      (body.sessionId as string | undefined) ||
+      `SDK-${user.sub}-${Date.now()}`;
 
-    if (!idNumber?.trim() || idNumber.trim().length < 5) {
-      throw new BadRequestException('A valid ID number is required');
-    }
+    await this.verificationPaymentsService.markYouverifyPending(payment!, reference);
 
-    if (!firstName?.trim() || !lastName?.trim()) {
-      throw new BadRequestException('First and last name are required');
-    }
-
-    if (!selfie) {
-      throw new BadRequestException('Selfie photo is required');
-    }
-
-    const allowedSelfieTypes = ['image/jpeg', 'image/jpg', 'image/png'];
-    if (!allowedSelfieTypes.includes(selfie.mimetype)) {
-      throw new BadRequestException('Selfie must be JPG or PNG');
-    }
-
-    if (selfie.size > 5 * 1024 * 1024) {
-      throw new BadRequestException('Selfie must be smaller than 5MB');
-    }
-
-    const upload = await this.cloudinaryService.uploadToCloudinaryWithPublicId(
-      selfie.buffer,
-      selfie.originalname,
-      'flowcheq-estate/kyc-selfies',
-    );
-
-    const result = await this.youverifyService.verifyIdentityWithSelfie({
-      userId: user.sub,
-      role: profile.role,
-      documentType: documentType as 'nin' | 'driver_license',
-      idNumber: idNumber.trim(),
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      dateOfBirth: dateOfBirth?.trim() || undefined,
-      selfieUrl: upload.url,
+    await this.usersService.markYouverifyVerified(user.sub, {
+      youverifyCustomerId: (body.id as string | undefined) ?? reference,
+      youverifyPayload: body,
     });
 
-    if (result.verified) {
-      await this.usersService.markYouverifyVerified(user.sub, {
-        youverifyCustomerId: result.customerId,
-        youverifyPayload: result.raw as Record<string, unknown> | undefined,
-      });
-      await this.usersService.updateYouverifySession(user.sub, {
-        youverifyReference: result.reference,
-      });
-
-      return {
-        success: true,
-        verified: true,
-        reference: result.reference,
-        message: result.message,
-      };
-    }
-
-    await this.usersService.updateYouverifySession(user.sub, {
-      youverifyReference: result.reference,
-      youverifyCustomerId: result.customerId,
-      youverifyStatus: 'failed',
-      youverifyPayload: result.raw as Record<string, unknown> | undefined,
-    });
+    await this.verificationPaymentsService.markVerified(payment!, reference);
 
     return {
-      success: false,
-      verified: false,
-      reference: result.reference,
-      message: result.message,
+      success: true,
+      verified: true,
+      reference,
+      message: 'Identity verified successfully via YouVerify.',
     };
   }
 
-  @Post('account/initiate')
+  @Post('account/verify')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
-  @ApiOperation({
-    summary: 'Deprecated — use POST /youverify/account/verify with NIN/license + selfie',
-  })
-  async initiate(@CurrentUser() user: RequestUser) {
-    const profile = await this.usersService.findById(user.sub);
-    if (!profile) throw new BadRequestException('User not found');
-
-    if (!ACCOUNT_VERIFICATION_ROLES.has(profile.role)) {
-      throw new BadRequestException(
-        'YouVerify account verification is required for agents, landlords, companies, house hunters, and law firm partners',
-      );
-    }
-
-    if (profile.youverifyStatus === 'verified') {
-      return { alreadyVerified: true, message: 'Account already verified with YouVerify' };
-    }
-
+  @ApiOperation({ summary: 'Deprecated — use Web SDK on /verify-account' })
+  async verifyAccountDeprecated() {
     throw new BadRequestException(
-      'Use POST /youverify/account/verify with your NIN or driver license number and a selfie photo. Manual verification is no longer accepted.',
+      'Use the YouVerify Web SDK on /verify-account after paying the verification fee.',
     );
   }
 
@@ -196,19 +277,32 @@ export class YouverifyController {
     }
 
     const parsed = this.youverifyService.parseWebhookStatus(parsedBody);
-    if (!parsed.reference) {
+    const metadata = (parsedBody.metadata ?? (parsedBody.data as Record<string, unknown>)?.metadata) as
+      | Record<string, unknown>
+      | undefined;
+
+    const userId =
+      (metadata?.userId as string | undefined) ||
+      (parsed.reference ? String(parsed.reference).split('-')[1] : undefined);
+
+    if (!userId) {
       return { received: true, skipped: true };
     }
 
-    const userId = String(parsed.reference).split('-')[1];
-    if (!userId) return { received: true, skipped: true };
+    const payment = await this.verificationPaymentsService.findLatestForUser(userId);
 
     if (parsed.status === 'verified') {
+      if (payment && this.verificationPaymentsService.isVerificationFeePaid(payment)) {
+        await this.verificationPaymentsService.markVerified(payment, parsed.reference);
+      }
       await this.usersService.markYouverifyVerified(userId, {
         youverifyCustomerId: parsed.customerId,
         youverifyPayload: parsedBody,
       });
     } else if (parsed.status === 'failed') {
+      if (payment) {
+        await this.verificationPaymentsService.markFailed(payment, 'YouVerify webhook reported failure');
+      }
       await this.usersService.updateYouverifySession(userId, {
         youverifyStatus: 'failed',
         youverifyPayload: parsedBody,

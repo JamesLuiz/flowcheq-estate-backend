@@ -256,35 +256,90 @@ export class FlutterwaveService {
     }
   }
 
-  async verifyTransfer(transferId: number) { // Should be number, not string
+  async verifyTransfer(transferId: number) {
     try {
-      const response = await axios.get(
-        `${this.baseUrl}/transfers/${transferId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${this.secretKey}`,
-          },
-        },
-      );
+      const response = await axios.get(`${this.baseUrl}/transfers/${transferId}`, {
+        headers: { Authorization: `Bearer ${this.secretKey}` },
+      });
 
       const transfer = response.data.data;
       return {
         success: transfer.status === 'SUCCESSFUL',
-        status: transfer.status,
-        amount: transfer.amount,
-        reference: transfer.reference,
-        complete_message: transfer.complete_message,
+        status: transfer.status as string,
+        amount: Number(transfer.amount),
+        reference: transfer.reference as string,
+        complete_message: transfer.complete_message as string | undefined,
         created_at: transfer.created_at,
         bankName: transfer.bank_name,
         accountNumber: transfer.account_number,
+        id: transfer.id,
       };
     } catch (error: any) {
-      this.logger.error('Flutterwave transfer verification error:', error.response?.data || error.message);
+      this.logger.error(
+        'Flutterwave transfer verification error:',
+        error.response?.data || error.message,
+      );
       return {
         success: false,
+        status: 'UNKNOWN',
         error: error.response?.data?.message || 'Transfer verification failed',
       };
     }
+  }
+
+  /**
+   * Poll Flutterwave transfer status before delivering verification (best practice:
+   * re-query API — do not trust initiate response alone).
+   * @see https://developer.flutterwave.com/v3.0/docs/webhooks
+   */
+  async waitForTransferConfirmation(
+    transferId: number,
+    expectedReference: string,
+    expectedAmount: number,
+    options?: { maxAttempts?: number; delayMs?: number },
+  ): Promise<{
+    confirmed: boolean;
+    pending: boolean;
+    status: string;
+    reference?: string;
+    amount?: number;
+  }> {
+    const maxAttempts = options?.maxAttempts ?? 12;
+    const delayMs = options?.delayMs ?? 2500;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const result = await this.verifyTransfer(transferId);
+
+      if (result.status === 'SUCCESSFUL') {
+        if (
+          result.reference !== expectedReference ||
+          Math.abs((result.amount ?? 0) - expectedAmount) > 0.01
+        ) {
+          throw new Error('Transfer verification mismatch (reference or amount)');
+        }
+        return {
+          confirmed: true,
+          pending: false,
+          status: result.status,
+          reference: result.reference,
+          amount: result.amount,
+        };
+      }
+
+      if (result.status === 'FAILED') {
+        throw new Error(result.complete_message || 'Flutterwave transfer failed');
+      }
+
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+
+    return { confirmed: false, pending: true, status: 'PENDING' };
+  }
+
+  isVerificationFeeReference(reference?: string | null): boolean {
+    return Boolean(reference?.startsWith('YV-FEE-'));
   }
 
   // Create virtual account for user
@@ -865,11 +920,57 @@ export class FlutterwaveService {
     }
   }
 
-  // Transfer funds from virtual account to platform account (main Flutterwave account)
-  // This transfers to a bank account linked to the main Flutterwave account
-  // Note: Not used for viewing payments (commission stays in platform account automatically)
-  // This method may be useful for other manual transfer scenarios
+  // Debit a user's payout subaccount (virtual wallet) into your main Flutterwave F4B balance.
+  // @see https://developer.flutterwave.com/v3.0/docs/payout-subaccount — "Withdrawals to F4B Account"
   async transferFromVirtualAccountToPlatform(data: {
+    agentCustomerCode: string; // User PSA account_reference (debit_subaccount)
+    amount: number;
+    narration?: string;
+    reference?: string;
+  }): Promise<any> {
+    const { agentCustomerCode, amount, narration, reference } = data;
+
+    const merchantId = this.configService.get<string>('FLUTTERWAVE_MERCHANT_ID');
+    if (!merchantId) {
+      throw new Error(
+        'FLUTTERWAVE_MERCHANT_ID is not configured. Find your account identifier in the Flutterwave dashboard (Settings) and set it in .env.',
+      );
+    }
+
+    try {
+      const options = {
+        method: 'POST',
+        url: 'https://api.flutterwave.com/v3/transfers',
+        headers: this.headers,
+        data: {
+          account_bank: 'flutterwave',
+          account_number: merchantId,
+          amount,
+          currency: 'NGN',
+          narration: narration || 'Verification fee — user virtual wallet to F4B',
+          reference: reference || `YV-FEE-F4B-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          debit_subaccount: agentCustomerCode,
+          callback_url: process.env.FLUTTERWAVE_WEBHOOK_URL || 'https://www.flutterwave.com/ng/',
+          debit_currency: 'NGN',
+        },
+      };
+      const response = await axios.request(options);
+      this.logger.log(
+        `Verification fee transfer: ₦${amount} from PSA ${agentCustomerCode} to F4B merchant ${merchantId}`,
+      );
+      return response.data;
+    } catch (error: any) {
+      this.logger.error(
+        'Error transferring from virtual account to F4B:',
+        error.response?.data || error.message,
+      );
+      throw error.response?.data || error;
+    }
+  }
+
+  // Legacy: debit PSA and pay out to an external Nigerian bank account (not F4B wallet).
+  // Prefer transferFromVirtualAccountToPlatform (F4B) for in-platform fee collection.
+  async transferFromVirtualAccountToExternalBank(data: {
     agentCustomerCode: string; // Agent's virtual account customer code
     amount: number;
     narration?: string;

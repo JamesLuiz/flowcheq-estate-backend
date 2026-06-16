@@ -27,6 +27,7 @@ import { CreateUserDto } from '../users/dto/create-user.dto';
 import { EmailService } from './email.service';
 import { FlutterwaveService } from '../promotions/flutterwave.service';
 import { CloudinaryService } from '../houses/cloudinary.service';
+import { requiresAccountVerification } from '../common/account-verification.constants';
 
 @Injectable()
 export class AuthService {
@@ -50,6 +51,25 @@ export class AuthService {
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
 
+  private async ensureVirtualAccountForUser(user: UserDocument) {
+    if (!requiresAccountVerification(user.role)) return;
+
+    const existing = await this.flutterwaveService.getWalletByUserId(user._id.toString());
+    if (existing?.customerCode) return;
+
+    try {
+      await this.flutterwaveService.createVirtualAccount({
+        account_name: user.name,
+        email: user.email,
+        mobilenumber: user.phone || '08000000000',
+      });
+      this.logger.log(`Virtual account ensured for ${user.email}`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to ensure virtual account for ${user.email}: ${message}`);
+    }
+  }
+
   async register(dto: RegisterDto) {
     const payload: CreateUserDto = {
       ...dto,
@@ -58,21 +78,7 @@ export class AuthService {
     };
 
     const user = await this.usersService.create(payload);
-
-    // Create virtual account for agents and landlords
-    if (user.role === 'agent' || user.role === 'landlord') {
-      try {
-        await this.flutterwaveService.createVirtualAccount({
-          account_name: user.name,
-          email: user.email,
-          mobilenumber: user.phone || '08000000000', // Default phone if not provided
-        });
-        this.logger.log(`Virtual account created for ${user.email}`);
-      } catch (error: any) {
-        // Don't fail registration if virtual account creation fails
-        this.logger.error(`Failed to create virtual account for ${user.email}: ${error.message || error}`);
-      }
-    }
+    await this.ensureVirtualAccountForUser(user);
 
     // Send role-specific welcome email (don't fail registration if email fails)
     try {
@@ -111,6 +117,7 @@ export class AuthService {
     } as any);
 
     await this.issueEmailVerification(user._id.toString(), user.email, user.name);
+    await this.ensureVirtualAccountForUser(user);
 
     return this.buildAuthResponse(await this.usersService.findById(user._id.toString()) as UserDocument);
   }
@@ -193,7 +200,8 @@ export class AuthService {
     };
 
     const user = await this.usersService.create(payload);
-    
+    await this.ensureVirtualAccountForUser(user);
+
     // Update with company details
     await this.usersService.updateAgentProfile(user._id.toString(), {
       companyDetails: {
@@ -236,6 +244,7 @@ export class AuthService {
     };
 
     const user = await this.usersService.create(payload);
+    await this.ensureVirtualAccountForUser(user);
 
     await this.usersService.updateAgentProfile(user._id.toString(), {
       lawFirmDetails: {
@@ -308,6 +317,7 @@ export class AuthService {
       );
     }
 
+    await this.ensureVirtualAccountForUser(user);
     await this.usersService.updateLastLoginAt(user._id.toString());
     return this.buildAuthResponse(user);
   }

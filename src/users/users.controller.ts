@@ -7,6 +7,13 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { type RequestUser } from '../auth/decorators/current-user.decorator';
 import { FlutterwaveService } from '../promotions/flutterwave.service';
 import { WithdrawFundsDto } from './dto/withdraw-funds.dto';
+import { canAccessWallet } from '../common/account-verification.constants';
+
+function assertWalletAccess(role: string) {
+  if (!canAccessWallet(role)) {
+    throw new ForbiddenException('Wallet is not available for this account type');
+  }
+}
 
 @Controller('agents')
 @ApiTags('Agents')
@@ -72,8 +79,8 @@ export class UsersController {
       throw new NotFoundException('Agent not found');
     }
 
-    if (agent.role !== 'agent' && agent.role !== 'landlord') {
-      throw new ForbiddenException('Only agents and landlords can access bank account');
+    if (!canAccessWallet(agent.role)) {
+      throw new ForbiddenException('Wallet is not available for this account type');
     }
 
     type VirtualAccountInfo = {
@@ -142,9 +149,7 @@ export class UsersController {
       throw new NotFoundException('Agent not found');
     }
 
-    if (agent.role !== 'agent' && agent.role !== 'landlord') {
-      throw new ForbiddenException('Only agents and landlords can update bank account');
-    }
+    assertWalletAccess(agent.role);
 
     return this.usersService.updateBankAccount(user.sub, body.bankAccount);
   }
@@ -161,9 +166,7 @@ export class UsersController {
       throw new NotFoundException('User not found');
     }
 
-    if (agent.role !== 'agent' && agent.role !== 'landlord') {
-      throw new ForbiddenException('Only agents and landlords can withdraw funds');
-    }
+    assertWalletAccess(agent.role);
 
     const result = await this.usersService.generateWithdrawalOtp(user.sub);
     return {
@@ -240,9 +243,7 @@ export class UsersController {
       throw new NotFoundException('User not found');
     }
 
-    if (agent.role !== 'agent' && agent.role !== 'landlord') {
-      throw new ForbiddenException('Only agents and landlords can withdraw funds');
-    }
+    assertWalletAccess(agent.role);
 
     const bankAccount = (agent as any).bankAccount;
     if (!bankAccount || !bankAccount.accountNumber || !bankAccount.bankCode) {
@@ -511,9 +512,7 @@ export class UsersController {
       throw new NotFoundException('User not found');
     }
 
-    if (agent.role !== 'agent' && agent.role !== 'landlord') {
-      throw new ForbiddenException('Only agents and landlords can fund their wallet');
-    }
+    assertWalletAccess(agent.role);
 
     if (body.amount < 100) {
       throw new BadRequestException('Minimum funding amount is 100 NGN');

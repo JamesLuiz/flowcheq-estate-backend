@@ -10,6 +10,7 @@ import { User, UserSchema } from '../users/schemas/user.schema';
 import { HousesModule } from '../houses/houses.module';
 import { UsersModule } from '../users/users.module';
 import { AuthModule } from '../auth/auth.module';
+import { YouverifyModule } from '../youverify/youverify.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { AuthModule } from '../auth/auth.module';
     forwardRef(() => HousesModule),
     forwardRef(() => UsersModule),
     forwardRef(() => AuthModule),
+    forwardRef(() => YouverifyModule),
   ],
   controllers: [PromotionsController, FlutterwaveWebhookController],
   providers: [PromotionsService, FlutterwaveService],
